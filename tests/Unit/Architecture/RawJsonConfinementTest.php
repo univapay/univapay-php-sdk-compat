@@ -69,12 +69,20 @@ use PHPUnit\Framework\TestCase;
  *   `$body['metadata']`/`$body['data']` (typed-first hydration -- see below).
  * - `Resources/Charge.php`, `Resources/Refund.php`, `Resources/Cancel.php`,
  *   `Resources/PaymentToken/ThreeDSIssuerToken.php`, `Resources/PaymentData/CardData.php`,
- *   `Resources/PaymentData/PaidyData.php` -- typed-first hydration (see `Support\TypedHydrator`,
- *   docs/ARCHITECTURE.md's "Response path" section): each class's `hydrateFromTyped()` patches one
- *   or two fields the generated SDK's typed model can't carry (or, for `Charge`'s `three_ds` and
- *   `PaidyData`'s shipping `country`, genuinely lacks) from this same response's raw decoded body
- *   (`error`/`metadata`/`payload` are stored raw verbatim by design; `Charge.three_ds` and
- *   `PaidyData`'s shipping address `country` are real spec gaps) instead of from the typed model.
+ *   `Resources/PaymentData/PaidyData.php`, `Resources/Configuration/Configuration.php`,
+ *   `Resources/Configuration/CardChargeCvvConfirmation.php`,
+ *   `Resources/Configuration/InstallmentsConfiguration.php`,
+ *   `Resources/Configuration/QrScanConfiguration.php`,
+ *   `Resources/Configuration/RecurringConfiguration.php` -- typed-first hydration (see
+ *   `Support\TypedHydrator`, docs/ARCHITECTURE.md's "Response path" section): each class's
+ *   `hydrateFromTyped()` patches one or more fields the generated SDK's typed model can't carry
+ *   (or genuinely lacks -- `Charge.three_ds`, `PaidyData`'s shipping `country`) from this same
+ *   response's raw decoded body. Most of these patches are by design (`error`/`metadata`/
+ *   `payload`/`flat_fees`/`min_transfer_payout`/`maximum_charge_amounts`/`threshold`/
+ *   `min_charge_amount` were always stored raw verbatim, never Money-converted, even before
+ *   typed-first hydration existed); `QrScanConfiguration`'s `forbidden_qr_scan_gateway` is a
+ *   pre-existing wire-key bug (singular vs the spec's plural `_gateways`) preserved on purpose --
+ *   see that class's own doc.
  *
  * Every other resource class's raw-JSON handling happens through `Utility\Json\JsonSchema`'s
  * reflection-driven `parse()` (property-by-property, via each class's declared `$schema`), which
@@ -109,6 +117,12 @@ class RawJsonConfinementTest extends TestCase
         'Resources/PaymentToken/ThreeDSIssuerToken.php',
         'Resources/PaymentData/CardData.php',
         'Resources/PaymentData/PaidyData.php',
+        'Resources/Configuration/Configuration.php',
+        'Resources/Configuration/CardChargeCvvConfirmation.php',
+        'Resources/Configuration/InstallmentsConfiguration.php',
+        'Resources/Configuration/QrScanConfiguration.php',
+        'Resources/Configuration/RecurringConfiguration.php',
+        'Resources/Merchant.php',
         'Errors/UnivapayRequestError.php',
         'Errors/UnivapayForbiddenError.php',
         'Errors/UnivapayUnauthorizedError.php',

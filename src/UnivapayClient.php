@@ -162,14 +162,14 @@ class UnivapayClient
     public function getMe()
     {
         $merchants = $this->bridge->merchants();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($merchants) {
                 return $merchants->getCurrentMerchant();
             },
             $this->bridge->handlers(),
             'GET /me'
         );
-        return Merchant::getSchema()->parse($body, [new CompatContext($this->bridge)]);
+        return TypedHydrator::resolve(Merchant::class, $result, new CompatContext($this->bridge));
     }
 
     /**
@@ -195,14 +195,14 @@ class UnivapayClient
     public function getStore($id)
     {
         $stores = $this->bridge->stores();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($stores, $id) {
                 return $stores->getStore($id);
             },
             $this->bridge->handlers(),
             "GET /stores/$id"
         );
-        return Store::getSchema()->parse($body, [new CompatContext($this->bridge, $id)]);
+        return TypedHydrator::resolve(Store::class, $result, new CompatContext($this->bridge, $id));
     }
 
     /**

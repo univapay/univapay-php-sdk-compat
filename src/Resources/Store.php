@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources;
 
 use DateTime;
 use UnivaPay\Models\CreateCustomerIdRequest;
+use UnivaPay\Models\Store as GeneratedStore;
 use Univapay\Compat\Errors\UnivapayUnsupportedFeatureError;
 use Univapay\Compat\Resources\Configuration\Configuration;
 use Univapay\Compat\Resources\Mixins\GetCharges;
@@ -83,13 +84,47 @@ class Store extends Resource
             ->upsert('created_on', true, FormatterUtils::of('getDateTime'));
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. Clean 1:1 match against the
+     * generated SDK's `UnivaPay\Models\Store` -- `configuration` is dispatched to `Configuration::
+     * hydrateFromTyped()` (see its own doc for the nested `Configuration\*` tree audit). Unlike
+     * `Merchant`, `configuration` is OPTIONAL here (required=false in this class's own schema):
+     * missing/unmappable resolves to null instead of declining the whole `Store`.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedStore)) {
+            return null;
+        }
+        $createdOn = $typed->getCreatedOn();
+        if ($createdOn === null) {
+            return null;
+        }
+
+        $configurationTyped = $typed->getConfiguration();
+        $configuration = null;
+        if ($configurationTyped !== null) {
+            $configurationBody = isset($body['configuration']) && is_array($body['configuration'])
+                ? $body['configuration']
+                : [];
+            $configuration = Configuration::hydrateFromTyped($configurationTyped, $configurationBody);
+        }
+
+        return new self($typed->getId(), $typed->getName(), $createdOn, $configuration, $context);
+    }
+
     // --- Resource wiring (fetch/update) ----------------------------------------------------------
 
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
         $stores = $bridge->stores();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($stores) {
                 return $stores->getStore($this->id);
             },
