@@ -18,6 +18,22 @@ class UnivapayClientOptionsTest extends TestCase
         $this->assertInstanceOf(NetworkRetryHandler::class, $options->networkRetryHandler);
     }
 
+    public function testDeprecationNoticesDefaultsToFalse()
+    {
+        $options = new UnivapayClientOptions();
+
+        $this->assertFalse($options->deprecationNotices);
+    }
+
+    public function testDeprecationNoticesIsSettable()
+    {
+        $options = new UnivapayClientOptions();
+
+        $options->deprecationNotices = true;
+
+        $this->assertTrue($options->deprecationNotices);
+    }
+
     public function testEndpointIsOverridable()
     {
         $options = new UnivapayClientOptions('https://staging.example.com');

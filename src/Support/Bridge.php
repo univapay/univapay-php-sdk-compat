@@ -191,6 +191,16 @@ final class Bridge
     }
 
     /**
+     * `UnivapayClientOptions::$deprecationNotices` -- read fresh on every call rather than cached,
+     * so flipping it on `$clientOptions` mid-process (unusual, but nothing here forbids it) takes
+     * effect immediately. See `Support\DeprecationNotifier`'s class doc.
+     */
+    public function deprecationNoticesEnabled(): bool
+    {
+        return $this->options->deprecationNotices;
+    }
+
+    /**
      * The merchant this client's app token was issued for -- present on both store- and
      * merchant-level tokens.
      */
