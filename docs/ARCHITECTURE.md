@@ -101,22 +101,78 @@ the dispatch mechanism is needed. As of this writing:
 
 | Resource | Status | Notes |
 |---|---|---|
-| `Resources/Charge.php` | **Typed-primary** | Clean 1:1 field match against `UnivaPay\Models\Charge`, except `error`/`metadata` (patched from the raw body — see below) and `three_ds` (patched from the raw body — genuine spec gap, see below). |
-| `Resources/Refund.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Refund`, except `error`/`metadata` (patched from the raw body). |
-| `Resources/Cancel.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Cancel`, except `error`/`metadata` (patched from the raw body). |
+| `Resources/Charge.php` | **Typed-primary** | Clean 1:1 field match against `UnivaPay\Models\Charge`, except `error`/`metadata` (patched from the raw body — see below) and `three_ds` (patched from the raw body — genuine spec gap, see below). List items (`ChargeList::getItems()`) too -- see "List endpoints" below. |
+| `Resources/Refund.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Refund`, except `error`/`metadata` (patched from the raw body). List items too. |
+| `Resources/Cancel.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Cancel`, except `error`/`metadata` (patched from the raw body). List items too. |
 | `Resources/PaymentToken/OnlineToken.php` | **Typed-primary** | `UnivaPay\Models\IssuerToken` already flattens both response shapes (online/d-barai vs bank_transfer) into one model with nullable fields — no gap, no union to route. |
 | `Resources/PaymentToken/ThreeDSIssuerToken.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\ThreeDsIssuerToken`, except `payload` (patched from the raw body). |
-| `Resources/Subscription.php` | Raw-primary | **Spec gap**: the generated `UnivaPay\Models\Subscription` has no `cyclical_period`, `payments_left`, `amount_left`/`amount_left_formatted`, `subscription_plan`, `installment_plan`, or `three_ds` — fields the raw parser reads and this compat resource exposes. Patching this many fields from the raw body would leave almost nothing typed; deferred rather than flipped with a hollow typed path. |
-| `Resources/Merchant.php`, `Resources/Store.php`, `Resources/CheckoutInfo.php` | Raw-primary | Share a deeply nested `Resources/Configuration/*` tree (~18 classes) against the generated `MerchantWebhookConfiguration` family. Not yet audited field-by-field for gaps; deferred as a follow-up rather than flipped without that audit. |
-| `Resources/TransactionToken.php` | Raw-primary | The generated response is a 7-way discriminated union (`Card`/`Konbini`/`Online`/`BankTransfer`/`Paidy`/`QrScan`/`QrMerchant` TransactionToken, keyed on `payment_type`), and this class's own `initSchema()` picks its `data` union branch the same way (see confinement allowlist). Deferred: needs per-variant getter mapping across all 7, not yet done. |
-| List-returning mixins (`Mixins\Get*`/`Support\ListDispatcher`) | Raw-primary | List endpoints return `*List` wrappers whose items are `*ListItem` models — thinner than the full entity, and compat's lazy-hydration contract (absent fields null, `fetch()` upgrades them) must produce identical nulls either way. Not yet audited for that equivalence; deferred. |
+| `Resources/TransactionToken.php` | **Typed-primary** | 7-way discriminated union (`Card`/`Konbini`/`Online`/`BankTransfer`/`Paidy`/`QrScan`/`QrMerchant` TransactionToken, keyed on `payment_type`) — narrowed via `instanceof` against all 7 (no shared parent type), `data` dispatched per variant to the matching `PaymentData\*::hydrateFromTyped()`. Two spec gaps patched from raw: `ip_address` (no generated variant carries it at all) and `PaidyData`'s shipping `country` (the generated shipping-address sub-model has no `country` getter). `bank_transfer` has no compat `PaymentData\*` class at all — a pre-existing raw-path gap (the raw switch has no case for it either), matched exactly rather than introduced. `apple_pay` is not a real wire discriminator value (the union's spec enum has no such entry — Apple Pay tokens report `payment_type: "card"`), so it always forces the raw fallback, by design. List items are a genuinely thinner `TransactionTokenListItem` (no `data`/`confirmed`/`usage_limit`/`last_used_on`/`metadata`/`ip_address` at all) — **not flipped**, see "List endpoints" below. |
+| `Resources/Merchant.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Merchant`; `configuration` (required) dispatched to `Configuration::hydrateFromTyped()`. |
+| `Resources/Store.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Store`; `configuration` (optional, unlike `Merchant`'s required one) dispatched to `Configuration::hydrateFromTyped()`. |
+| `Resources/Configuration/*` (13 of 18 classes) | **Typed-primary** | Field-by-field audit against the generated `MerchantWebhookConfiguration` family (see below) found every field has a typed counterpart except a handful always stored raw by design, plus one real bug (see below) — flipped: `Configuration`, `TransferSchedule`, `UserTransactionsConfiguration`, `CardConfiguration`, `QrScanConfiguration`, `ConvenienceConfiguration`, `PaidyConfiguration`, `RecurringConfiguration`, `CardChargeCvvConfirmation`, `SecurityConfiguration`, `LimitChargeByCardConfiguration`, `InstallmentsConfiguration`, `CardBrandPercentFees`. |
+| `Resources/CheckoutInfo.php` and its own-only `Configuration/*` classes (`OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`, `ThemeConfiguration`, `ColorsConfiguration`) | Raw-primary | `GET /checkout_info` has its OWN separate generated model family (`Checkout*`, e.g. `CheckoutCardConfiguration`), distinct from `MerchantWebhookConfiguration` — NOT audited. `CheckoutInfo` has no `hydrateFromTyped()` of its own, so `TypedHydrator` never attempts typed hydration for it regardless of what the *shared* Configuration classes above now support (their `hydrateFromTyped()` only recognizes the `MerchantWebhookConfiguration` family and declines harmlessly for anything else — see e.g. `ConvenienceConfiguration`'s own doc). |
+| `Resources/Subscription.php` | Raw-primary | **Confirmed spec gap** (a spec fix is in flight separately): the generated `UnivaPay\Models\Subscription` has no `cyclical_period`, `cycles_left`/`payments_left`, `charge_id`, `subscription_plan`, `installment_plan`, `amount_left`/`amount_left_formatted`, or `three_ds` — fields the raw parser reads and this compat resource exposes. Do not patch-from-raw here: patching this many fields would leave almost nothing typed, so this stays raw-primary until the spec catches up. |
+| List endpoints (`Support\ListDispatcher`) | Mixed — see below | Charge/Refund/Cancel lists are typed-first; every other list endpoint is raw-primary. |
 | `Resources/Transfer.php`, `Resources/BankAccount.php`, `Resources/Ledger.php`, `Resources/TransferStatusChange.php` | Raw-primary, permanently | These resources have no live API endpoint at all (`fetchCall()`/`updateCall()` throw `UnivapayUnsupportedFeatureError` unconditionally) — the ONLY place they're ever hydrated is `UnivapayClient::parseWebhookData()`, parsing a consumer-supplied array that never passed through `ApiCaller`/a generated `Apis\*` call in the first place. There is no typed result to prefer in that path, structurally, not as a matter of prioritization. |
 
 `GenericMetadata`/`metadata` fields: preserved exactly as before regardless of a resource's
 typed-primary status — always the raw decoded value verbatim, patched from `$rawBody` inside
 `hydrateFromTyped()` rather than round-tripped through the typed model. Same treatment for `error`
-(a raw array, not the typed `PaymentError`) and `PaymentToken\ThreeDSIssuerToken::$payload` (a raw
-value, not the typed `IssuerTokenPayload`).
+(a raw array, not the typed `PaymentError`), `PaymentToken\ThreeDSIssuerToken::$payload`/
+`PaymentData\CardData`'s `three_ds.error` (raw, not the typed `IssuerTokenPayload`/`PaymentError`),
+and `Configuration`'s `flat_fees`/`min_transfer_payout`/`maximum_charge_amounts` plus
+`CardChargeCvvConfirmation.threshold`/`InstallmentsConfiguration.min_charge_amount` (raw, never
+Money-converted, even before typed-first hydration existed).
+
+## Configuration tree audit findings
+
+`Resources/Configuration/*` nests under both `Merchant`/`Store` (`configuration`, backed by the
+generated `MerchantWebhookConfiguration` family) and `CheckoutInfo` (its own separate `Checkout*`
+family — see the table above). The audit checked every `Configuration\*` class nested under
+`Merchant`/`Store` (13 of the 18 total classes; the other 5 are `CheckoutInfo`-only, not touched)
+field by field against the generated model. Findings:
+
+- **13 classes have a clean typed counterpart for every field** except a handful always stored raw
+  by design (see the `GenericMetadata` note above) — all 13 are now typed-primary.
+- **One real bug, found and deliberately preserved**: `QrScanConfiguration::$forbiddenQrScanGateway`
+  reads the WRONG wire key. The auto-derived raw schema has always read
+  `forbidden_qr_scan_gateway` (singular, from the property name), but the generated model's own
+  `@maps` annotation for the equivalent field is `forbidden_qr_scan_gateways` (**plural** — see
+  `UnivaPay\Models\MerchantWebhookQrScanConfiguration::setForbiddenQrScanGateways()`). The real
+  field name evidently changed upstream and the raw path never caught up, so this property has
+  always been `null` in practice. `hydrateFromTyped()` reads the SAME (singular, wrong) key from
+  the raw body on purpose — using the typed model's own correctly-keyed getter would silently
+  start returning real data, a behavior change typed-first hydration must not introduce. See
+  `QrScanConfiguration`'s own class doc and
+  `ConfigurationDifferentialTest::testQrScanForbiddenGatewaysWireKeyMismatchIsPreservedAsNullOnBothPaths()`.
+- **`CheckoutInfo`'s own `Configuration/*`-adjacent classes were not audited** — a genuinely
+  separate generated model family (`Checkout*`), not a subset of `MerchantWebhookConfiguration`.
+  Deferred; `CheckoutInfo` stays entirely raw-primary.
+
+## List endpoints
+
+`Support\ListDispatcher::wrapPage()` accepts an optional `$typedItems` array (the generated list
+wrapper's own `getItems()`, positionally aligned with the raw `items`) and passes the item at the
+same index as a second argument to `$itemParser` — existing single-parameter item parsers are
+unaffected (PHP ignores the extra argument), so flipping one endpoint never touches another.
+
+- **Charge/Refund/Cancel lists are typed-first** (`listAllCharges`/`listStoreCharges`/
+  `listSubscriptionCharges`/`listChargesForSubscriptionPayment`/`listRefunds`/`listCancels`):
+  `UnivaPay\Models\ChargeList`/`RefundList`/`CancelList::getItems()` return the SAME full
+  `Charge[]`/`Refund[]`/`Cancel[]` typed models the single-fetch endpoints already use — there is
+  no separate, thinner `*ListItem` type for these three, so the existing `hydrateFromTyped()`
+  methods apply unchanged per item, with no additional gap audit needed. Each call site's item
+  parser now routes through `Support\TypedHydrator::resolve()` instead of a bare
+  `getSchema()->parse()`.
+- **Every other list endpoint stays raw-primary** — transaction tokens, subscriptions, stores,
+  transactions, scheduled payments, bank transfer ledgers. Not all were audited; the one that was,
+  transaction tokens, rules itself out concretely: `UnivaPay\Models\TransactionTokenListItem` is
+  genuinely thinner than the full union response — it carries `id`/`storeId`/`merchantName`/
+  `storeName`/`email`/`paymentType`/`active`/`mode`/`type`/`createdOn`/`updatedOn`/`userData` only,
+  with no `data`, `confirmed`, `usage_limit`, `last_used_on`, `metadata`, or `ip_address` field at
+  all. Flipping this list would need dedicated `TransactionTokenListItem`-aware hydration (skip the
+  `data`-union dispatch entirely rather than reaching for a `getData()` that doesn't exist) rather
+  than reusing `TransactionToken::hydrateFromTyped()` as-is; not implemented.
 
 ## The differential harness
 
@@ -146,9 +202,17 @@ Raw array access on a decoded HTTP body (`$body[`, `$json[`, `$raw[`, `$decoded[
 | `Support/ExceptionMapper.php` | `bodyAsArray()`'s plain-`ApiException`-with-response fallback (its own `ALLOWED_JSON_DECODE` row); array-building elsewhere in the class is typed-accessor code, not bracket access into a raw body |
 | `Errors/UnivapayRequestError.php` + 401/403/409 subclasses | `fromJson()`/constructors read the array `ExceptionMapper::mapResponse()`/`map()` built |
 | `Support/ListDispatcher.php` | `wrapPage()` reads `$decoded['items']`/`['has_more']`; `resolveMerchantId()` reads `$decoded['id']` from a raw `GET /me` |
-| `Resources/Store.php` | `getCustomerId()` returns `$body['customer_id']` directly — no `Jsonable` hydration step |
+| `Resources/Store.php` | `getCustomerId()` returns `$body['customer_id']` directly — no `Jsonable` hydration step; also `hydrateFromTyped()`'s `configuration` sub-body patch |
 | `Resources/Charge.php`, `Resources/Refund.php`, `Resources/Cancel.php` | Typed-first hydration: `hydrateFromTyped()` patches `error`/`metadata` from the raw body by design (see "Typed-first hydration" above); `Charge`'s also patches `three_ds` (genuine spec gap) |
 | `Resources/PaymentToken/ThreeDSIssuerToken.php` | Typed-first hydration: `hydrateFromTyped()` patches `payload` from the raw body by design |
+| `Resources/PaymentData/CardData.php` | Typed-first hydration: `hydrateFromTyped()` patches `three_ds.error` from the raw body by design |
+| `Resources/PaymentData/PaidyData.php` | Typed-first hydration: `hydrateFromTyped()` patches the shipping address's `country` from the raw body — genuine spec gap (the generated shipping-address sub-model has no `country` getter) |
+| `Resources/Merchant.php` | Typed-first hydration: `hydrateFromTyped()`'s `configuration` sub-body patch |
+| `Resources/Configuration/Configuration.php` | Typed-first hydration: `hydrateFromTyped()` patches `flat_fees`/`min_transfer_payout`/`maximum_charge_amounts` from the raw body by design, plus sub-body extraction for each nested config |
+| `Resources/Configuration/CardChargeCvvConfirmation.php` | Typed-first hydration: `hydrateFromTyped()` patches `threshold` from the raw body by design |
+| `Resources/Configuration/InstallmentsConfiguration.php` | Typed-first hydration: `hydrateFromTyped()` patches `min_charge_amount` from the raw body by design |
+| `Resources/Configuration/QrScanConfiguration.php` | Typed-first hydration: `hydrateFromTyped()` patches `forbidden_qr_scan_gateway` from the raw body — preserving a pre-existing wire-key bug, see "Configuration tree audit findings" |
+| `Resources/Configuration/RecurringConfiguration.php` | Typed-first hydration: sub-body extraction for its nested `CardChargeCvvConfirmation` |
 
 `UnivapayClient::parseWebhookData(array $data)` reads `$data['event']`/`$data['data']` — but on a
 consumer-supplied array (that method's documented contract), never a decoded API response. It
