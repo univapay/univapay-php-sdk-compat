@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    No xsi:noNamespaceSchemaLocation: composer.json's phpunit constraint spans
+    ^8.5 || ^9.6 || ^10.5 || ^11.5 || ^12.5 || ^13.0 to cover the PHP 7.2-8.3 CI matrix, and no
+    single pinned schema version validates cleanly against every one of those runner versions
+    (PHPUnit 12/13 report a mismatch against an older pin as a runner deprecation). The attribute
+    is optional -- omitting it drops IDE-time schema validation but avoids that deprecation on
+    every runner version.
+-->
+<phpunit bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheResultFile=".phpunit.cache/test-results">
+    <testsuites>
+        <testsuite name="unit">
+            <directory suffix="Test.php">tests/Unit</directory>
+        </testsuite>
+        <testsuite name="roundtrip">
+            <directory suffix="Test.php">tests/RoundTrip</directory>
+        </testsuite>
+        <!-- Offline, no external dependency: a real local HTTP server (tests/Hostile/Support/
+             FakeServer.php), never Prism or the docs repo. Always runs, never skips. -->
+        <testsuite name="hostile">
+            <directory suffix="Test.php">tests/Hostile</directory>
+        </testsuite>
+        <!-- Needs Prism running from a docs-repo checkout (`npm run mock`, :4010 by default) and
+             UNIVAPAY_PRISM_URL set; every test in here SKIPS (not fails) otherwise, see
+             tests/Integration/IntegrationTestCase's own doc comment. -->
+        <testsuite name="integration">
+            <directory suffix="Test.php">tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

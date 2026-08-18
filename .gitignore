@@ -1,0 +1,13 @@
+/vendor/
+composer.lock
+.phpunit.cache/
+.phpunit.result.cache
+coverage/
+
+# RT-harness (tools/example-roundtrip): openapi-*.yaml is the pinned, committed fixture (the
+# whole point is a reproducible point-in-time capture of the docs repo's spec); everything
+# derived from it is a regeneratable build artifact and stays out of git.
+/tools/example-roundtrip/node_modules/
+/tools/example-roundtrip/*.json
+!/tools/example-roundtrip/package.json
+!/tools/example-roundtrip/package-lock.json

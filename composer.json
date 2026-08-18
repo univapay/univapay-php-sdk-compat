@@ -1,0 +1,47 @@
+{
+    "name": "univapay/univapay-sdk-compat",
+    "description": "Runtime compatibility layer that reimplements the public surface of univapay/php-sdk (the legacy hand-written SDK) on top of the APIMatic-generated univapay-client-php-sdk transport engine, so existing integrators keep working after migrating with univapay/univapay-sdk-migrate.",
+    "type": "library",
+    "keywords": ["univapay", "payment", "credit card", "japan", "compat", "compatibility"],
+    "homepage": "https://github.com/univapay/univapay-php-sdk-compat",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.2",
+        "ext-json": "*",
+        "univapay/client-sdk": "^1.1.0",
+        "moneyphp/money": "^3.3 || ^4.0"
+    },
+    "conflict": {
+        "univapay/php-sdk": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^8.5 || ^9.6 || ^10.5 || ^11.5 || ^12.5 || ^13.0",
+        "squizlabs/php_codesniffer": "^3.7",
+        "phpcompatibility/php-compatibility": "^9.3",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Univapay\\Compat\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Univapay\\Compat\\Tests\\": "tests/",
+            "Univapay\\Compat\\Tools\\ExampleRoundTrip\\": "tools/example-roundtrip/src/"
+        }
+    },
+    "scripts": {
+        "lint": "phpcs",
+        "lint:fix": "phpcbf",
+        "test": "phpunit tests"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}

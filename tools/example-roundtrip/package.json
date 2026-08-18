@@ -1,0 +1,17 @@
+{
+  "name": "@univapay/example-roundtrip",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-shot YAML->JSON pre-step for the example round-trip harness (see run.php). Not published; not part of the compat package.",
+  "main": "yaml2json.js",
+  "scripts": {
+    "convert": "node yaml2json.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "js-yaml": "^4.3.1"
+  }
+}

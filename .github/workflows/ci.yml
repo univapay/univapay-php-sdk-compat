@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    name: composer validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+      - run: composer validate
+      - run: composer install --prefer-dist --no-progress
+
+  lint:
+    name: "lint (PHP ${{ matrix.php }})"
+    runs-on: ubuntu-latest
+    needs: [validate]
+    strategy:
+      matrix:
+        php: ["7.2", "7.4", "8.0", "8.3"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+      - name: php -l every file
+        run: find src tests -name "*.php" -print0 | xargs -0 -n1 php -l
+      # PHPCompatibility itself needs a modern PHP CLI to *run* the sniffer even though it
+      # checks the source AGAINST the 7.2- floor pinned in phpcs.xml; only run it once, on the
+      # newest matrix leg, to avoid redundant identical reports on every PHP version.
+      - name: Install dev deps (PHPCompatibility run only)
+        if: matrix.php == '8.3'
+        run: composer install --prefer-dist --no-progress
+      - name: PHPCompatibility (7.2 floor)
+        if: matrix.php == '8.3'
+        run: vendor/bin/phpcs
+
+  unit-tests:
+    name: "phpunit (PHP ${{ matrix.php }})"
+    runs-on: ubuntu-latest
+    needs: [validate]
+    strategy:
+      matrix:
+        php: ["7.2", "7.4", "8.0", "8.3"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+      - run: composer install --prefer-dist --no-progress
+      - run: vendor/bin/phpunit tests
+
+  # Integration job against Prism. Checks out the docs repo alongside this one, pinned to the
+  # exact commit tests/RoundTrip's example round-trip harness fixture was re-pinned against
+  # (tools/example-roundtrip/openapi-7c9f9f85.yaml -- keep these two pins in sync at the next
+  # re-pin, see that file's own doc comment for the one-arg re-pin procedure), starts Prism
+  # (`npm ci && npm run mock`, :4010) from its spec, then runs tests/Integration (round-trips
+  # every compat client/resource method, asserts Money/TypedEnum/DateTime prop types,
+  # fetch()/awaitResult() new-instance semantics, getNext()/pagination shape -- see
+  # tests/Integration/*.php's own class docs for per-suite Prism-limited-coverage notes). The
+  # hostile-fixtures suite (tests/Hostile/) does NOT need this job at all -- it's already covered
+  # by the plain `unit-tests` job above (`vendor/bin/phpunit tests` runs the whole tests/ tree,
+  # and Hostile is offline, backed by its own real local HTTP server, tests/Hostile/Support/
+  # FakeServer.php -- no Prism or docs-repo dependency).
+  #
+  # `secrets.DOCS_REPO_READ_TOKEN` holds a read-only deploy key for the docs repo (provisioned via
+  # gh api repos/univapaycast/univapay_docs/keys, read_only=true). Re-pinning `ref:` below to
+  # `develop` once cross-repo access is live is a follow-up (a fixed sha is deliberate for now:
+  # this job's whole point is reproducing the exact spec compat was built and tested against, not
+  # tracking a moving branch).
+  integration:
+    name: Integration (vs Prism mock)
+    runs-on: ubuntu-latest
+    needs: [validate]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: compat
+      - uses: actions/checkout@v5
+        with:
+          repository: univapaycast/univapay_docs
+          ref: 7c9f9f852429f7e57b78c47047d188690adc8d2c
+          path: docs
+          ssh-key: ${{ secrets.DOCS_REPO_READ_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: docs
+      - run: npm run mock &
+        working-directory: docs
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+      - run: composer install --prefer-dist --no-progress
+        working-directory: compat
+      - name: Wait for Prism
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4010/me -H "Authorization: Bearer x.y" > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Prism never became reachable" >&2
+          exit 1
+      - run: vendor/bin/phpunit tests/Integration
+        working-directory: compat
+        env:
+          UNIVAPAY_PRISM_URL: http://127.0.0.1:4010
+
+  composer-audit:
+    name: composer audit
+    runs-on: ubuntu-latest
+    needs: [validate]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+      - run: composer install --prefer-dist --no-progress
+      - run: composer audit

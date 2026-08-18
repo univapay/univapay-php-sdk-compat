@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<ruleset name="univapay-sdk-compat">
+    <description>Coding standard for univapay/univapay-sdk-compat: PSR-12 + PHPCompatibility gate at the package's PHP floor (7.2).</description>
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg value="p"/>
+
+    <file>src</file>
+    <file>tests</file>
+
+    <config name="testVersion" value="7.2-"/>
+
+    <rule ref="PSR12">
+        <!-- Test fixture support classes deliberately share a file with their Test class
+             (e.g. tests/Unit/Utility/FunctionalUtilsTest.php's ParentFixture/ChildFixture,
+             tests/Unit/Utility/Json/JsonSchemaTest.php's JsonSchemaFixtureTarget): they exist
+             solely to be parsed by the test in the same file and are not autoloaded on their
+             own, so PSR-1's one-class-per-file rule is relaxed for tests/ only. -->
+        <exclude name="PSR1.Classes.ClassDeclaration.MultipleClasses">
+            <exclude-pattern>tests/*</exclude-pattern>
+        </exclude>
+    </rule>
+    <rule ref="PHPCompatibility">
+        <!-- src/Enums/TypedEnum.php is a verbatim port (namespace line only, per the porting
+             plan) of the old SDK's TypedEnum: its debug_backtrace()-based caller-name
+             detection is preexisting, battle-tested behavior we must not alter. This specific
+             sniff flags a PHP 7.0 semantic nuance (debug_backtrace no longer reports a
+             parameter's ORIGINAL value once reassigned) that does not affect this class's
+             correctness (see tests/Unit/Enums/TypedEnumIdentityTest.php, which asserts the
+             actual runtime behavior stays correct across the 7.2-8.3 matrix): it is a false
+             positive for this specific, unmodifiable file, not a real incompatibility to fix.
+        -->
+        <exclude name="PHPCompatibility.FunctionUse.ArgumentFunctionsReportCurrentValue.Changed">
+            <exclude-pattern>src/Enums/TypedEnum.php</exclude-pattern>
+        </exclude>
+        <!-- src/Resources/Resource.php's class name is a verbatim port of the old SDK's
+             `Resources\Resource` basename, required by the compat layer's core design
+             constraint that every ported class keep the OLD SDK's exact basename (so the
+             migrate package's Rector rename map is a trivial namespace-prefix swap, and so a
+             `catch (\Univapay\Resources\Resource)` or `instanceof` in migrated consumer code
+             keeps working unmodified). `resource` is only a SOFT reserved word (still legal to
+             use as a class name; PHP does not forbid it, just discourages it against a future
+             reservation), so this is not a real incompatibility: renaming it would break the
+             1:1 basename contract for no functional gain. -->
+        <exclude name="PHPCompatibility.Keywords.ForbiddenNamesAsDeclared.resourceFound">
+            <exclude-pattern>src/Resources/Resource.php</exclude-pattern>
+        </exclude>
+        <!-- False positive: this sniff flags any call that merely STARTS WITH "fam" as a call to
+             the long-removed `fam_*` (File Alteration Monitor) extension functions, a
+             substring-prefix match bug, not a real usage of that extension. It fires on
+             `Enums\ConvenienceStore::FAMILY_MART()`, a verbatim-ported old-SDK enum CASE NAME,
+             not a function call of any kind. -->
+        <exclude name="PHPCompatibility.Extensions.RemovedExtensions.famRemoved">
+            <exclude-pattern>tests/Unit/Support/RequestModelFactoryTest.php</exclude-pattern>
+        </exclude>
+    </rule>
+</ruleset>
