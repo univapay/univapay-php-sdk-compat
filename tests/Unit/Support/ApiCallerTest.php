@@ -7,6 +7,7 @@ use Closure;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use UnivaPay\Exceptions\ApiException;
+use UnivaPay\Http\ApiResponse;
 use UnivaPay\Http\HttpRequest;
 use UnivaPay\Http\HttpResponse;
 use Univapay\Compat\Errors\UnivapayError;
@@ -18,6 +19,7 @@ use Univapay\Compat\Requests\Handlers\NetworkRetryHandler;
 use Univapay\Compat\Requests\Handlers\RateLimitHandler;
 use Univapay\Compat\Requests\Handlers\RequestHandler;
 use Univapay\Compat\Support\ApiCaller;
+use Univapay\Compat\Support\TypedResult;
 
 /**
  * Covers plan blockers 1 (idempotency across retries) and 2 (raw-body capture bypassing strict
@@ -114,6 +116,88 @@ class ApiCallerTest extends TestCase
         }, [], 'POST /charges/c1/capture');
 
         $this->assertTrue($result);
+    }
+
+    // --- callTyped(): typed-first hydration plumbing ------------------------------------------
+
+    public function testCallTypedCapturesBothTheRawBodyAndTheTypedResultOnSuccess()
+    {
+        $caller = new ApiCaller();
+
+        $result = $caller->callTyped(function () use ($caller) {
+            $caller->recordResponse('{"id":"c1"}', 200);
+            return new ApiResponse(null, 200, null, [], 'the-typed-charge', '{"id":"c1"}');
+        }, [], 'GET /charges/c1');
+
+        $this->assertInstanceOf(TypedResult::class, $result);
+        $this->assertSame(['id' => 'c1'], $result->rawBody);
+        $this->assertSame('the-typed-charge', $result->typed);
+        $this->assertFalse($result->mapperFailed);
+    }
+
+    public function testCallReturnsOnlyTheRawBodyEvenWhenATypedResultWasAvailable()
+    {
+        // call() must behave exactly as it always has, unaffected by callTyped()'s addition --
+        // the typed result is simply never looked at.
+        $caller = new ApiCaller();
+
+        $result = $caller->call(function () use ($caller) {
+            $caller->recordResponse('{"id":"c1"}', 200);
+            return new ApiResponse(null, 200, null, [], 'the-typed-charge', '{"id":"c1"}');
+        }, [], 'GET /charges/c1');
+
+        $this->assertSame(['id' => 'c1'], $result);
+    }
+
+    public function testCallTypedHasNullTypedWhenTheControllerReturnsNoApiResponse()
+    {
+        // Same synthetic-closure convention every other test in this file uses (no ApiResponse
+        // returned at all) -- typed simply has nothing to be.
+        $caller = new ApiCaller();
+
+        $result = $caller->callTyped(function () use ($caller) {
+            $caller->recordResponse('{"id":"c1"}', 200);
+        }, [], 'GET /charges/c1');
+
+        $this->assertSame(['id' => 'c1'], $result->rawBody);
+        $this->assertNull($result->typed);
+        $this->assertFalse($result->mapperFailed);
+    }
+
+    public function testCallTypedMarksMapperFailedOnTheJsonMapperBypassPath()
+    {
+        $caller = new ApiCaller();
+
+        $result = $caller->callTyped(function () use ($caller) {
+            $caller->recordResponse('{"id":"c1","metadata":{"nested":{"legacy":true}}}', 200);
+            throw new JsonMapperException("JSON property 'nested' does not exist in object of type 'Metadata'");
+        }, [], 'GET /charges/c1');
+
+        $this->assertSame(['id' => 'c1', 'metadata' => ['nested' => ['legacy' => true]]], $result->rawBody);
+        $this->assertNull($result->typed);
+        $this->assertTrue($result->mapperFailed);
+    }
+
+    public function testCallTypedStillThrowsWrappedWhenNothingIsBypassable()
+    {
+        $caller = new ApiCaller();
+
+        $this->expectException(UnivapayError::class);
+
+        $caller->callTyped(function () {
+            throw new JsonMapperException('mapping failed');
+        }, [], 'GET /charges/c1');
+    }
+
+    public function testCallTypedMapsAnErrorResponseThroughExceptionMapperJustLikeCall()
+    {
+        $caller = new ApiCaller();
+
+        $this->expectException(UnivapayNotFoundError::class);
+
+        $caller->callTyped(function () {
+            throw $this->notFoundException();
+        }, [], 'GET /stores/s1/charges/missing');
     }
 
     // --- ExceptionMapper integration ---------------------------------------------------------
