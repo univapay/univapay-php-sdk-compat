@@ -35,6 +35,7 @@ use Univapay\Compat\Resources\PaymentToken\ThreeDSIssuerToken;
 use Univapay\Compat\Resources\Subscription\InstallmentPlan;
 use Univapay\Compat\Resources\Subscription\ScheduleSettings;
 use Univapay\Compat\Resources\Subscription\SubscriptionPlan;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Utility\FormatterUtils;
@@ -349,6 +350,34 @@ class TransactionToken extends Resource
 
     // --- Resource wiring (fetch/update) --------------------------------------------------------
 
+    /**
+     * Also what `awaitResult()`'s own hook below cites -- see that method's doc for why it can't
+     * use `Pollable`'s shared `nativePollEquivalent()` plumbing.
+     */
+    private const NATIVE_POLL_EQUIVALENT =
+        'TransactionTokensApi::getTransactionToken() with polling=true (no dedicated poll helper exists for tokens)';
+
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'TransactionTokensApi::getTransactionToken()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'TransactionTokensApi::updateTransactionToken()';
+    }
+
+    /**
+     * Required by `Pollable` (`use Pollable;` above, for `pollableStatuses()`), but never actually
+     * reached: this class's own `awaitResult()` override below replaces the trait's implementation
+     * entirely rather than calling it, so this exists purely to satisfy the trait's abstract
+     * method -- see that override's own doc.
+     */
+    protected function nativePollEquivalent(): string
+    {
+        return self::NATIVE_POLL_EQUIVALENT;
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
@@ -444,6 +473,11 @@ class TransactionToken extends Resource
      */
     public function awaitResult($retry = 0)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::awaitResult()',
+            self::NATIVE_POLL_EQUIVALENT
+        );
         $pollableStatuses = $this->pollableStatuses();
         $response = $this->fetchWithPolling();
         $retryCount = 0;
@@ -530,6 +564,11 @@ class TransactionToken extends Resource
      */
     public function patch(PaymentMethodPatch $paymentPatch)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::patch()',
+            'TransactionTokensApi::updateTransactionToken()'
+        );
         return $this->update($paymentPatch)->fetch();
     }
 
@@ -540,6 +579,11 @@ class TransactionToken extends Resource
      */
     public function deactivate()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::deactivate()',
+            'TransactionTokensApi::deleteTransactionToken()'
+        );
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
         return $bridge->caller()->call(
@@ -570,6 +614,11 @@ class TransactionToken extends Resource
      */
     public function enableThreeDS($enabled, $redirectEndpoint = null)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::enableThreeDS()',
+            'TransactionTokensApi::enableTokenThreeDs()/disableTokenThreeDs()'
+        );
         if ($this->type !== TokenType::RECURRING()) {
             throw new UnivapayLogicError(Reason::TRANSACTION_TOKEN_IS_NOT_RECURRING());
         }
@@ -625,6 +674,11 @@ class TransactionToken extends Resource
         ?Redirect $redirect = null,
         ?PaymentThreeDS $threeDS = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::createCharge()',
+            'ChargesApi::createCharge()'
+        );
         $this->validateCreateCharge();
         $this->validateCapture($capture, $captureAt);
 
@@ -701,6 +755,11 @@ class TransactionToken extends Resource
         ?DateInterval $cyclicalPeriod = null,
         ?PaymentThreeDS $threeDS = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::createSubscription()',
+            'SubscriptionsApi::createSubscription()'
+        );
         $this->validateCreateSubscription($money, $period, $cyclicalPeriod, $initialAmount, $scheduleSettings);
         $this->validateCapture($firstChargeAuthorizationOnly, null, $firstChargeCaptureAfter);
 
@@ -775,6 +834,11 @@ class TransactionToken extends Resource
 
     public function threeDSIssuerToken()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\TransactionToken::threeDSIssuerToken()',
+            'TransactionTokensApi::getTokenThreeDsIssuerToken()'
+        );
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
         $result = $bridge->caller()->callTyped(

@@ -9,6 +9,7 @@ use Money\Currency;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -36,6 +37,15 @@ trait GetCharges
      * @return Paginated
      */
     abstract protected function listChargesPage(array $query);
+
+    /**
+     * @return string Native-SDK equivalent for THIS class's own list endpoint -- see
+     *         `Support\DeprecationNotifier`'s class doc. Implemented per-class because `GetCharges`
+     *         is shared by `UnivapayClient` (merchant-wide), `Store` (store-scoped), `Subscription`
+     *         (subscription-scoped), and `Subscription\ScheduledPayment` (payment-scoped) -- four
+     *         different underlying native list endpoints behind the same compat method name.
+     */
+    abstract protected function nativeListChargesEquivalent(): string;
 
     /**
      * @param string|null $lastFour
@@ -82,6 +92,11 @@ trait GetCharges
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listCharges()',
+            $this->nativeListChargesEquivalent()
+        );
         $query = FunctionalUtils::stripNulls([
             'last_four' => $lastFour,
             'name' => $name,
@@ -111,6 +126,11 @@ trait GetCharges
      */
     public function listChargesByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listChargesByOptions()',
+            $this->nativeListChargesEquivalent()
+        );
         $rules = [
             'from' => 'ValidationHelper::getAtomDate',
             'to' => 'ValidationHelper::getAtomDate',

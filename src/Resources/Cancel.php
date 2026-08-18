@@ -111,6 +111,21 @@ class Cancel extends Resource
         return [(string) CancelStatus::PENDING() => array_diff(CancelStatus::findValues(), [CancelStatus::PENDING()])];
     }
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'CancelsApi::getCancel()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'CancelsApi::updateCancel()';
+    }
+
+    protected function nativePollEquivalent(): string
+    {
+        return 'CancelsApi::pollCancel()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();

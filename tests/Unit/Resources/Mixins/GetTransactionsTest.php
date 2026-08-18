@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use Univapay\Compat\Enums\ChargeStatus;
 use Univapay\Compat\Resources\Mixins\GetTransactions;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * Covers the fix for old `listTransactions()` unconditionally dereferencing
@@ -122,6 +123,16 @@ class GetTransactionsFixture
 
     /** @var array */
     public $capturedQuery;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
+    protected function nativeListTransactionsEquivalent(): string
+    {
+        return 'TransactionHistoryApi::listTransactionHistory()';
+    }
 
     protected function listTransactionsPage(array $query)
     {

@@ -10,6 +10,7 @@ use Univapay\Compat\Enums\ChargeStatus;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Enums\TransactionType;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -36,6 +37,14 @@ trait GetTransactions
      * @return Paginated
      */
     abstract protected function listTransactionsPage(array $query);
+
+    /**
+     * @return string Native-SDK equivalent for THIS class's own list endpoint -- see
+     *         `Support\DeprecationNotifier`'s class doc. Implemented per-class because
+     *         `GetTransactions` is shared by `UnivapayClient` (merchant-wide) and `Store`
+     *         (store-scoped) -- two different underlying native list endpoints.
+     */
+    abstract protected function nativeListTransactionsEquivalent(): string;
 
     /**
      * @param DateTime|null $from
@@ -66,6 +75,11 @@ trait GetTransactions
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransactions()',
+            $this->nativeListTransactionsEquivalent()
+        );
         $query = FunctionalUtils::stripNulls([
             // Null-guarded: fatals if dereferenced unconditionally when either date is left unset.
             'from' => isset($from) ? $from->getTimestamp() * 1000 : null,
@@ -93,6 +107,11 @@ trait GetTransactions
      */
     public function listTransactionsByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransactionsByOptions()',
+            $this->nativeListTransactionsEquivalent()
+        );
         $rules = [
             'from' => 'ValidationHelper::getAtomDate',
             'to' => 'ValidationHelper::getAtomDate',

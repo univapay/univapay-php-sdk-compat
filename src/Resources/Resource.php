@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources;
 
+use Univapay\Compat\Support\Bridge;
+use Univapay\Compat\Support\DeprecationNotifier;
+use Univapay\Compat\Support\NullBridge;
 use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Support\TypedResult;
 
@@ -35,6 +38,14 @@ use Univapay\Compat\Support\TypedResult;
  */
 abstract class Resource
 {
+    /**
+     * Native-equivalent label for `fetch()`/`update()` on a resource that has none at all --
+     * either it always throws (`Merchant`, `Transfer`, `BankAccount`, `Store::update()`), or the
+     * concrete subclass hasn't overridden `nativeFetchEquivalent()`/`nativeUpdateEquivalent()`.
+     * See `Support\DeprecationNotifier`'s class doc.
+     */
+    protected const NO_NATIVE_EQUIVALENT = "no native equivalent (see the compat README's supported surface matrix)";
+
     /** @var mixed */
     public $id;
 
@@ -69,10 +80,54 @@ abstract class Resource
     abstract protected function updateCall($updates);
 
     /**
+     * Convenience accessor so shared hook call sites (`Support\DeprecationNotifier`, the `Pollable`
+     * and list-mixin traits) don't need to know whether they're mixed into a `Resource` subclass
+     * (`$this->context->bridge()`) or `UnivapayClient` directly (its own `$this->bridge`) --
+     * `UnivapayClient` declares its own `getBridge()` returning the same thing its own way.
+     * Falls back to `Support\NullBridge` (notices always disabled) when this instance has no
+     * `$context` at all -- see that class's own doc for which real resources this applies to.
+     * Deliberately no `Bridge` return type: a handful of unit-test fixtures construct a `Resource`
+     * subclass with a fake `$context` (no real `Bridge`/HTTP available) and override this method
+     * to return a trivial stub instead -- a strict `Bridge` return type would forbid that.
+     *
+     * @return Bridge|NullBridge
+     */
+    protected function getBridge()
+    {
+        if ($this->context === null) {
+            return new NullBridge();
+        }
+        return $this->context->bridge();
+    }
+
+    /**
+     * @return string Native-SDK equivalent for `fetch()`, e.g. `'ChargesApi::getCharge()'`.
+     *         Overridden per concrete subclass that has one; defaults to `NO_NATIVE_EQUIVALENT`.
+     */
+    protected function nativeFetchEquivalent(): string
+    {
+        return self::NO_NATIVE_EQUIVALENT;
+    }
+
+    /**
+     * @return string Native-SDK equivalent for `update()`, e.g. `'ChargesApi::updateCharge()'`.
+     *         Overridden per concrete subclass that has one; defaults to `NO_NATIVE_EQUIVALENT`.
+     */
+    protected function nativeUpdateEquivalent(): string
+    {
+        return self::NO_NATIVE_EQUIVALENT;
+    }
+
+    /**
      * @return static A NEW instance hydrated from a fresh GET, never $this.
      */
     public function fetch()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::fetch()',
+            $this->nativeFetchEquivalent()
+        );
         return $this->resolveHydration($this->fetchCall());
     }
 
@@ -82,6 +137,11 @@ abstract class Resource
      */
     public function update($updates)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::update()',
+            $this->nativeUpdateEquivalent()
+        );
         return $this->resolveHydration($this->updateCall($updates));
     }
 

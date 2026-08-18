@@ -109,6 +109,24 @@ class ScheduledPayment extends Resource
 
     // --- Resource wiring (fetch/update) ----------------------------------------------------------
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'SubscriptionsApi::getSubscriptionPayment()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'SubscriptionsApi::updateSubscriptionPayment()';
+    }
+
+    /**
+     * @see Mixins\GetCharges::nativeListChargesEquivalent()
+     */
+    protected function nativeListChargesEquivalent(): string
+    {
+        return 'SubscriptionsApi::listChargesForSubscriptionPayment()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();

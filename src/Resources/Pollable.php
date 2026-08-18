@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources;
 
+use Univapay\Compat\Support\DeprecationNotifier;
+
 /**
  * Port of the old SDK's `Resources\Pollable` trait. Old `awaitResult()` issued a raw GET with
  * `polling=true` through `Utility\RequesterUtils` against a hand-built `RequestContext`. The new
@@ -46,12 +48,27 @@ trait Pollable
     abstract protected function fetchWithPolling();
 
     /**
+     * @return string Native-SDK equivalent for `awaitResult()`, e.g. `'ChargesApi::pollCharge()'`
+     *         -- see `Support\DeprecationNotifier`'s class doc. Implemented per-class (Charge,
+     *         Refund, Cancel, Subscription each has its own generated `pollX()` helper;
+     *         `TransactionToken` also implements it, for the handful of `abstract` methods this
+     *         trait requires, even though its own `awaitResult()` override never calls it -- see
+     *         that class's own implementation).
+     */
+    abstract protected function nativePollEquivalent(): string;
+
+    /**
      * @param int $retry Maximum number of ADDITIONAL held-GET attempts beyond the first, once a
      *        transition out of the resource's current status has not yet been observed.
      * @return static
      */
     public function awaitResult($retry = 0)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::awaitResult()',
+            $this->nativePollEquivalent()
+        );
         $pollableStatuses = $this->pollableStatuses();
         $response = $this->fetchWithPolling();
         $retryCount = 0;

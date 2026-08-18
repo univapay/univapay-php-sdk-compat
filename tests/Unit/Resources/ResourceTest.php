@@ -8,6 +8,7 @@ use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Resources\Resource;
 use Univapay\Compat\Support\Bridge;
 use Univapay\Compat\Support\CompatContext;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
 /**
@@ -198,6 +199,17 @@ class ResourceFixture extends Resource
     {
         $this->updateBody = $body;
         return $this;
+    }
+
+    /**
+     * Overrides `Resource::getBridge()` (which reads `$this->context->bridge()`): this fixture is
+     * deliberately constructed with a fake string marker or no context at all (see class doc), so
+     * the deprecation-notice hook `fetch()`/`update()` now call needs a bridge that doesn't depend
+     * on `$this->context` being a real `CompatContext`.
+     */
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
     }
 
     protected static function initSchema()

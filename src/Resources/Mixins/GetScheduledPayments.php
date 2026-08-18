@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -38,6 +39,11 @@ trait GetScheduledPayments
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listScheduledPayments()',
+            'SubscriptionsApi::listSubscriptionPayments()'
+        );
         $query = FunctionalUtils::stripNulls([
             'cursor' => $cursor,
             'limit' => $limit,
@@ -53,6 +59,11 @@ trait GetScheduledPayments
      */
     public function listScheduledPaymentsByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listScheduledPaymentsByOptions()',
+            'SubscriptionsApi::listSubscriptionPayments()'
+        );
         $rules = [
             'cursor_direction' => 'ValidationHelper::getEnumValue',
         ];

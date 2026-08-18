@@ -7,6 +7,7 @@ use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Enums\SubscriptionStatus;
 use Univapay\Compat\Resources\Mixins\GetSubscriptions;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 class GetSubscriptionsTest extends TestCase
 {
@@ -52,6 +53,16 @@ class GetSubscriptionsFixture
 
     /** @var array */
     public $capturedQuery;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
+    protected function nativeListSubscriptionsEquivalent(): string
+    {
+        return 'SubscriptionsApi::listAllSubscriptions()';
+    }
 
     protected function listSubscriptionsPage(array $query)
     {

@@ -12,6 +12,7 @@ use Univapay\Compat\Resources\Configuration\Configuration;
 use Univapay\Compat\Resources\Mixins\GetCharges;
 use Univapay\Compat\Resources\Mixins\GetSubscriptions;
 use Univapay\Compat\Resources\Mixins\GetTransactions;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Support\TypedResult;
@@ -121,6 +122,35 @@ class Store extends Resource
 
     // --- Resource wiring (fetch/update) ----------------------------------------------------------
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'StoresApi::getStore()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetCharges::nativeListChargesEquivalent()
+     */
+    protected function nativeListChargesEquivalent(): string
+    {
+        return 'ChargesApi::listStoreCharges()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetSubscriptions::nativeListSubscriptionsEquivalent()
+     */
+    protected function nativeListSubscriptionsEquivalent(): string
+    {
+        return 'SubscriptionsApi::listStoreSubscriptions()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetTransactions::nativeListTransactionsEquivalent()
+     */
+    protected function nativeListTransactionsEquivalent(): string
+    {
+        return 'TransactionHistoryApi::listStoreTransactionHistory()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
@@ -144,6 +174,11 @@ class Store extends Resource
 
     public function getCharge($chargeId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Store::getCharge()',
+            'ChargesApi::getCharge()'
+        );
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
         $result = $bridge->caller()->callTyped(
@@ -158,6 +193,11 @@ class Store extends Resource
 
     public function getSubscription($subscriptionId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Store::getSubscription()',
+            'SubscriptionsApi::getSubscription()'
+        );
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
         $result = $bridge->caller()->callTyped(
@@ -181,6 +221,11 @@ class Store extends Resource
      */
     public function getCustomerId($localCustomerId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Store::getCustomerId()',
+            'StoresApi::createCustomerId()'
+        );
         $request = new CreateCustomerIdRequest((string) $localCustomerId);
         $bridge = $this->context->bridge();
         $stores = $bridge->stores();

@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -37,6 +38,11 @@ trait GetStores
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listStores()',
+            'StoresApi::listStores()'
+        );
         $query = FunctionalUtils::stripNulls([
             'cursor' => $cursor,
             'limit' => $limit,
@@ -51,6 +57,11 @@ trait GetStores
      */
     public function listStoresByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listStoresByOptions()',
+            'StoresApi::listStores()'
+        );
         $rules = [
             'cursor_direction' => 'ValidationHelper::getEnumValue',
         ];

@@ -5,6 +5,7 @@ namespace Univapay\Compat\Tests\Unit\Resources;
 use PHPUnit\Framework\TestCase;
 use Univapay\Compat\Enums\ChargeStatus;
 use Univapay\Compat\Resources\Pollable;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * `Pollable::awaitResult()` -- verbatim old-SDK loop semantics (see class doc), exercised
@@ -115,6 +116,16 @@ class PollableFixture
     public function callCount(): int
     {
         return $this->calls;
+    }
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
+    protected function nativePollEquivalent(): string
+    {
+        return 'ChargesApi::pollCharge()';
     }
 
     protected function pollableStatuses()

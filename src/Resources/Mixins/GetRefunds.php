@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -36,6 +37,11 @@ trait GetRefunds
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listRefunds()',
+            'RefundsApi::listRefunds()'
+        );
         $query = FunctionalUtils::stripNulls([
             'cursor' => $cursor,
             'limit' => $limit,
@@ -50,6 +56,11 @@ trait GetRefunds
      */
     public function listRefundsByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listRefundsByOptions()',
+            'RefundsApi::listRefunds()'
+        );
         $rules = [
             'cursor_direction' => 'ValidationHelper::getEnumValue',
         ];
