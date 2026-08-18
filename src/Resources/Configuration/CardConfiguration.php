@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources\Configuration;
 
+use UnivaPay\Models\CheckoutCardConfiguration;
 use UnivaPay\Models\MerchantWebhookCardConfiguration;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\Json\JsonSchema;
@@ -59,15 +60,26 @@ class CardConfiguration
     }
 
     /**
-     * Called directly by `Configuration::hydrateFromTyped()`. Clean 1:1 match against the
-     * generated `UnivaPay\Models\MerchantWebhookCardConfiguration` -- no gap, no raw patch needed.
+     * Called directly by `Configuration::hydrateFromTyped()` (Merchant/Store, backed by
+     * `MerchantWebhookCardConfiguration`) AND `CheckoutInfo::hydrateFromTyped()` (backed by the
+     * separate `CheckoutCardConfiguration`) -- this class is nested under both, see its own class
+     * doc. Every field but `card_limit` is a clean 1:1 match against EITHER generated model.
+     *
+     * `card_limit` is read from $body (this same raw sub-object), not either typed model's own
+     * `getCardLimit()` -- compat stores it as the raw decoded value verbatim (no formatter in this
+     * class's own schema), and the two generated families disagree on its very TYPE
+     * (`MerchantWebhookCardConfiguration::getCardLimit(): ?int` vs
+     * `CheckoutCardConfiguration::getCardLimit(): ?CardLimit`, a nested object) -- reading it
+     * typed would mean two different shapes depending on which endpoint hydrated this class,
+     * something the raw-passthrough contract has never done.
      *
      * @param mixed $typed
+     * @param array $body
      * @return self|null
      */
-    public static function hydrateFromTyped($typed)
+    public static function hydrateFromTyped($typed, array $body)
     {
-        if (!($typed instanceof MerchantWebhookCardConfiguration)) {
+        if (!($typed instanceof MerchantWebhookCardConfiguration) && !($typed instanceof CheckoutCardConfiguration)) {
             return null;
         }
         return new self(
@@ -79,7 +91,7 @@ class CardConfiguration
             $typed->getAllowedCountriesByIp(),
             $typed->getForeignCardsAllowed(),
             $typed->getFailOnNewEmail(),
-            $typed->getCardLimit(),
+            array_key_exists('card_limit', $body) ? $body['card_limit'] : null,
             $typed->getAllowEmptyCvv()
         );
     }

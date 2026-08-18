@@ -71,10 +71,12 @@ use PHPUnit\Framework\TestCase;
  *   `Resources/PaymentToken/ThreeDSIssuerToken.php`, `Resources/PaymentData/CardData.php`,
  *   `Resources/PaymentData/PaidyData.php`, `Resources/Configuration/Configuration.php`,
  *   `Resources/Configuration/CardChargeCvvConfirmation.php`,
+ *   `Resources/Configuration/CardConfiguration.php`,
  *   `Resources/Configuration/InstallmentsConfiguration.php`,
  *   `Resources/Configuration/QrScanConfiguration.php`,
- *   `Resources/Configuration/RecurringConfiguration.php` -- typed-first hydration (see
- *   `Support\TypedHydrator`, docs/ARCHITECTURE.md's "Response path" section): each class's
+ *   `Resources/Configuration/RecurringConfiguration.php`, `Resources/CheckoutInfo.php` -- typed-
+ *   first hydration (see `Support\TypedHydrator`, docs/ARCHITECTURE.md's "Response path"
+ *   section): each class's
  *   `hydrateFromTyped()` patches one or more fields the generated SDK's typed model can't carry
  *   (or genuinely lacks -- `Charge.three_ds`, `PaidyData`'s shipping `country`) from this same
  *   response's raw decoded body. Most of these patches are by design (`error`/`metadata`/
@@ -119,10 +121,12 @@ class RawJsonConfinementTest extends TestCase
         'Resources/PaymentData/PaidyData.php',
         'Resources/Configuration/Configuration.php',
         'Resources/Configuration/CardChargeCvvConfirmation.php',
+        'Resources/Configuration/CardConfiguration.php',
         'Resources/Configuration/InstallmentsConfiguration.php',
         'Resources/Configuration/QrScanConfiguration.php',
         'Resources/Configuration/RecurringConfiguration.php',
         'Resources/Merchant.php',
+        'Resources/CheckoutInfo.php',
         'Errors/UnivapayRequestError.php',
         'Errors/UnivapayForbiddenError.php',
         'Errors/UnivapayUnauthorizedError.php',

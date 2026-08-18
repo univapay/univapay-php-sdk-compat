@@ -183,14 +183,14 @@ class UnivapayClient
     {
         $this->bridge->requireStoreId();
         $checkout = $this->bridge->checkout();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($checkout) {
                 return $checkout->getCheckoutInfo();
             },
             $this->bridge->handlers(),
             'GET /checkout_info'
         );
-        return CheckoutInfo::getSchema()->parse($body);
+        return TypedHydrator::resolve(CheckoutInfo::class, $result, null);
     }
 
     public function getStore($id)

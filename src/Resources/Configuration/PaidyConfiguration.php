@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources\Configuration;
 
+use UnivaPay\Models\CheckoutPaidyConfiguration;
 use UnivaPay\Models\MerchantWebhookPaidyConfiguration;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\Json\JsonSchema;
@@ -11,8 +12,9 @@ use Univapay\Compat\Utility\Json\JsonSchema;
 /**
  * Verbatim port (namespace lines only) of the old SDK's
  * `Resources\Configuration\PaidyConfiguration`. Nested inside BOTH `Configuration` (Merchant/
- * Store, typed-first) and `CheckoutInfo` (own `Checkout*` model family, still raw-primary) -- see
- * `ConvenienceConfiguration`'s doc for why `hydrateFromTyped()` only needs to recognize one.
+ * Store, backed by `MerchantWebhookPaidyConfiguration`) and `CheckoutInfo` (backed by the
+ * separate `CheckoutPaidyConfiguration`) -- both typed-first, `hydrateFromTyped()` recognizes
+ * either.
  */
 class PaidyConfiguration
 {
@@ -38,7 +40,7 @@ class PaidyConfiguration
      */
     public static function hydrateFromTyped($typed)
     {
-        if (!($typed instanceof MerchantWebhookPaidyConfiguration)) {
+        if (!($typed instanceof MerchantWebhookPaidyConfiguration) && !($typed instanceof CheckoutPaidyConfiguration)) {
             return null;
         }
         return new self($typed->getEnabled());

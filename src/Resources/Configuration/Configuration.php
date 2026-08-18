@@ -168,7 +168,8 @@ class Configuration
             UserTransactionsConfiguration::class,
             $typed->getUserTransactionsConfiguration()
         );
-        $card = self::requiredNested(CardConfiguration::class, $typed->getCardConfiguration());
+        $cardBody = self::sub($body, 'card_configuration');
+        $card = self::requiredNestedWithBody(CardConfiguration::class, $typed->getCardConfiguration(), $cardBody);
         $qrScan = self::requiredNestedWithBody(
             QrScanConfiguration::class,
             $typed->getQrScanConfiguration(),
