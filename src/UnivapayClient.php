@@ -236,14 +236,14 @@ class UnivapayClient
         // $localCustomerId is deliberately never forwarded here -- see class doc.
         $request = RequestModelFactory::tokenCreate($payment);
         $tokens = $this->bridge->tokens();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function ($idempotencyKey) use ($tokens, $request) {
                 return $tokens->createTransactionToken($request, $idempotencyKey);
             },
             $this->bridge->handlers(),
             'POST /tokens'
         );
-        return TransactionToken::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(TransactionToken::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -253,14 +253,14 @@ class UnivapayClient
     {
         $storeId = $this->bridge->requireStoreId();
         $tokens = $this->bridge->tokens();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($tokens, $storeId, $transactionTokenId) {
                 return $tokens->getTransactionToken($storeId, $transactionTokenId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/tokens/$transactionTokenId"
         );
-        return TransactionToken::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(TransactionToken::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**

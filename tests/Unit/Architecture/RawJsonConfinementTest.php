@@ -63,19 +63,18 @@ use PHPUnit\Framework\TestCase;
  *   routing through a typed envelope if a typed-first hydration path is added later.
  * - `Resources/Store.php` -- `getCustomerId()` returns `$body['customer_id']` directly, with no
  *   `Jsonable` hydration step at all for this one response.
- * - `Resources/TransactionToken.php` -- the ONE resource file whose raw-array touch
- *   (`$json['payment_type']` in `initSchema()`'s `data` upsert closure) is inside `initSchema()`
- *   itself, same as every other resource's formatter closures -- listed explicitly (rather than
- *   relying on a generic "inside initSchema()" carve-out) because this audit's grep is a flat
- *   per-file check, not a method-body-aware parser; verified by direct reading that no OTHER
- *   method in this file touches raw JSON.
+ * - `Resources/TransactionToken.php` -- `initSchema()`'s `data` upsert closure reads
+ *   `$json['payment_type']` to pick the payment-type union branch (same as every other resource's
+ *   formatter closures, just inside `initSchema()` itself); `hydrateFromTyped()` also reads
+ *   `$body['metadata']`/`$body['data']` (typed-first hydration -- see below).
  * - `Resources/Charge.php`, `Resources/Refund.php`, `Resources/Cancel.php`,
- *   `Resources/PaymentToken/ThreeDSIssuerToken.php` -- typed-first hydration (see
- *   `Support\TypedHydrator`, docs/ARCHITECTURE.md's "Response path" section): each class's
- *   `hydrateFromTyped()` patches one or two fields the generated SDK's typed model can't carry
- *   (or, for `Charge`, genuinely lacks -- `three_ds`'s MPI/`redirect_id` fields) from this same
- *   response's raw decoded body (`error`/`metadata`/`payload` are stored raw verbatim by design;
- *   `three_ds` is a real spec gap) instead of from the typed model.
+ *   `Resources/PaymentToken/ThreeDSIssuerToken.php`, `Resources/PaymentData/CardData.php`,
+ *   `Resources/PaymentData/PaidyData.php` -- typed-first hydration (see `Support\TypedHydrator`,
+ *   docs/ARCHITECTURE.md's "Response path" section): each class's `hydrateFromTyped()` patches one
+ *   or two fields the generated SDK's typed model can't carry (or, for `Charge`'s `three_ds` and
+ *   `PaidyData`'s shipping `country`, genuinely lacks) from this same response's raw decoded body
+ *   (`error`/`metadata`/`payload` are stored raw verbatim by design; `Charge.three_ds` and
+ *   `PaidyData`'s shipping address `country` are real spec gaps) instead of from the typed model.
  *
  * Every other resource class's raw-JSON handling happens through `Utility\Json\JsonSchema`'s
  * reflection-driven `parse()` (property-by-property, via each class's declared `$schema`), which
@@ -108,6 +107,8 @@ class RawJsonConfinementTest extends TestCase
         'Resources/Refund.php',
         'Resources/Cancel.php',
         'Resources/PaymentToken/ThreeDSIssuerToken.php',
+        'Resources/PaymentData/CardData.php',
+        'Resources/PaymentData/PaidyData.php',
         'Errors/UnivapayRequestError.php',
         'Errors/UnivapayForbiddenError.php',
         'Errors/UnivapayUnauthorizedError.php',
