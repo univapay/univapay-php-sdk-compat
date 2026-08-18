@@ -44,9 +44,13 @@ targeting the old SDK's API shape, or a codebase already rewritten by hand — i
 composer require univapay/univapay-sdk-compat
 ```
 
-`composer.json` declares `"conflict": {"univapay/php-sdk": "*"}` — the two packages cannot be
-installed side by side, since both declare overlapping autoload roots under `Univapay\`. Requires
-PHP `>=7.2` (matching `univapay/client-sdk`'s own floor) and `moneyphp/money` `^3.3 || ^4.0`.
+The two packages *can* be installed side by side — their autoload roots (`Univapay\` vs.
+`Univapay\Compat\`) don't collide, and this package never references an old-SDK class directly.
+`univapay-sdk-migrate` relies on that: it requires this package before removing `univapay/php-sdk`,
+so both are present for one step while Rector still needs the old SDK's classes loadable for
+receiver-type resolution. Once your migration is done, remove `univapay/php-sdk` — there's no
+reason to keep it installed, but nothing breaks if it lingers alongside this package. Requires PHP
+`>=7.2` (matching `univapay/client-sdk`'s own floor) and `moneyphp/money` `^3.3 || ^4.0`.
 
 ## Supported surface matrix
 

@@ -48,8 +48,12 @@ vendor/bin/univapay-migrate
 composer require univapay/univapay-sdk-compat
 ```
 
-`composer.json` は `"conflict": {"univapay/php-sdk": "*"}` を宣言しています —— 両パッケージは
-`Univapay\` 配下の autoload ルートが重複するため、同時にインストールすることはできません。要件は
+両パッケージは同時にインストール可能です —— autoload ルート（`Univapay\` と `Univapay\Compat\`）は
+衝突せず、本パッケージが旧SDKのクラスを直接参照することもありません。`univapay-sdk-migrate` は
+これを前提にしています: Rector が受け側の型解決のために旧SDKのクラスをまだ必要としている間、本
+パッケージを require してから `univapay/php-sdk` を削除するため、一時的に両方が存在する瞬間があり
+ます。移行が完了したら `univapay/php-sdk` は削除してください —— 残しておく理由はありませんが、
+本パッケージと共存していても壊れることはありません。要件は
 PHP `>=7.2`（`univapay/client-sdk` 自体の要件と一致）、`moneyphp/money` `^3.3 || ^4.0` です。
 
 ## サポート対象の一覧
