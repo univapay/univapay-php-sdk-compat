@@ -2,6 +2,9 @@
 
 namespace Univapay\Compat\Resources;
 
+use Money\Currency;
+use Money\Money;
+use UnivaPay\Models\Refund as GeneratedRefund;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\RefundReason;
 use Univapay\Compat\Enums\RefundStatus;
@@ -91,6 +94,54 @@ class Refund extends Resource
             ->upsert('created_on', true, FormatterUtils::of('getDateTime'));
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator` -- see `Charge::
+     * hydrateFromTyped()`'s doc for the general shape. `error`/`metadata` are read from $body (this
+     * response's raw decoded body), not the typed `PaymentError`/`GenericMetadata` models: compat
+     * has always stored these as the raw decoded value verbatim (see docs/ARCHITECTURE.md's
+     * GenericMetadata note). Every other field is a clean 1:1 match against the generated SDK's
+     * `UnivaPay\Models\Refund` -- no spec gap.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedRefund)) {
+            return null;
+        }
+        if (
+            $typed->getStatus() === null
+            || $typed->getCurrency() === null
+            || $typed->getAmount() === null
+            || $typed->getMode() === null
+            || $typed->getCreatedOn() === null
+        ) {
+            return null;
+        }
+
+        $currency = new Currency($typed->getCurrency());
+
+        return new self(
+            $typed->getId(),
+            $typed->getStoreId(),
+            $typed->getChargeId(),
+            RefundStatus::fromValue($typed->getStatus()),
+            $currency,
+            new Money($typed->getAmount(), $currency),
+            $typed->getAmountFormatted(),
+            AppTokenMode::fromValue($typed->getMode()),
+            $typed->getCreatedOn(),
+            RefundReason::fromValue($typed->getReason()),
+            $typed->getMessage(),
+            array_key_exists('error', $body) ? $body['error'] : null,
+            array_key_exists('metadata', $body) ? $body['metadata'] : null,
+            $context
+        );
+    }
+
     protected function pollableStatuses()
     {
         return [(string) RefundStatus::PENDING() => array_diff(RefundStatus::findValues(), [RefundStatus::PENDING()])];
@@ -100,7 +151,7 @@ class Refund extends Resource
     {
         $bridge = $this->context->bridge();
         $refunds = $bridge->refunds();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($refunds) {
                 return $refunds->getRefund($this->storeId, $this->chargeId, $this->id);
             },
@@ -114,7 +165,7 @@ class Refund extends Resource
         $request = RequestModelFactory::refundUpdate($updates);
         $bridge = $this->context->bridge();
         $refunds = $bridge->refunds();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function ($idempotencyKey) use ($refunds, $request) {
                 return $refunds->updateRefund($this->storeId, $this->chargeId, $this->id, $request, $idempotencyKey);
             },
@@ -130,13 +181,13 @@ class Refund extends Resource
     {
         $bridge = $this->context->bridge();
         $refunds = $bridge->refunds();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($refunds) {
                 return $refunds->getRefund($this->storeId, $this->chargeId, $this->id, true);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/charges/{$this->chargeId}/refunds/{$this->id}?polling=true"
         );
-        return self::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($result);
     }
 }

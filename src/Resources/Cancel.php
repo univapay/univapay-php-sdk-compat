@@ -2,6 +2,7 @@
 
 namespace Univapay\Compat\Resources;
 
+use UnivaPay\Models\Cancel as GeneratedCancel;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CancelStatus;
 use Univapay\Compat\Support\RequestModelFactory;
@@ -71,6 +72,40 @@ class Cancel extends Resource
             ->upsert('created_on', true, FormatterUtils::of('getDateTime'));
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator` -- see `Charge::
+     * hydrateFromTyped()`'s doc for the general shape. `error`/`metadata` are read from $body (this
+     * response's raw decoded body), not the typed `PaymentError`/`GenericMetadata` models -- see
+     * that same doc note. Every other field is a clean 1:1 match against the generated SDK's
+     * `UnivaPay\Models\Cancel` -- no spec gap.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedCancel)) {
+            return null;
+        }
+        if ($typed->getStatus() === null || $typed->getMode() === null || $typed->getCreatedOn() === null) {
+            return null;
+        }
+
+        return new self(
+            $typed->getId(),
+            $typed->getChargeId(),
+            $typed->getStoreId(),
+            CancelStatus::fromValue($typed->getStatus()),
+            array_key_exists('error', $body) ? $body['error'] : null,
+            array_key_exists('metadata', $body) ? $body['metadata'] : null,
+            AppTokenMode::fromValue($typed->getMode()),
+            $typed->getCreatedOn(),
+            $context
+        );
+    }
+
     protected function pollableStatuses()
     {
         return [(string) CancelStatus::PENDING() => array_diff(CancelStatus::findValues(), [CancelStatus::PENDING()])];
@@ -80,7 +115,7 @@ class Cancel extends Resource
     {
         $bridge = $this->context->bridge();
         $cancels = $bridge->cancels();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($cancels) {
                 return $cancels->getCancel($this->storeId, $this->chargeId, $this->id);
             },
@@ -94,7 +129,7 @@ class Cancel extends Resource
         $request = RequestModelFactory::cancelUpdate($updates);
         $bridge = $this->context->bridge();
         $cancels = $bridge->cancels();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function ($idempotencyKey) use ($cancels, $request) {
                 return $cancels->updateCancel($this->storeId, $this->chargeId, $this->id, $request, $idempotencyKey);
             },
@@ -113,13 +148,13 @@ class Cancel extends Resource
         // NB: CancelsApi::getCancel()'s own generated $polling default is `false` (unlike every
         // other resource's `null`) -- an upstream gotcha. Passed explicitly as literal `true` here
         // regardless, so this call's actual wire behavior does not depend on that default at all.
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($cancels) {
                 return $cancels->getCancel($this->storeId, $this->chargeId, $this->id, true);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/charges/{$this->chargeId}/cancels/{$this->id}?polling=true"
         );
-        return self::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($result);
     }
 }

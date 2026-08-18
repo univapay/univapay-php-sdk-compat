@@ -29,6 +29,7 @@ use Univapay\Compat\Resources\Subscription\InstallmentPlan;
 use Univapay\Compat\Resources\Subscription\ScheduleSettings;
 use Univapay\Compat\Resources\Subscription\SubscriptionPlan;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -606,13 +607,13 @@ class TransactionToken extends Resource
     {
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($tokens) {
                 return $tokens->getTokenThreeDsIssuerToken($this->storeId, $this->id);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/tokens/{$this->id}/three_ds/issuer_token"
         );
-        return ThreeDSIssuerToken::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(ThreeDSIssuerToken::class, $result, $this->context);
     }
 }

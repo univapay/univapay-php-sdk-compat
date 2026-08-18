@@ -12,6 +12,7 @@ use Univapay\Compat\Resources\Mixins\GetCharges;
 use Univapay\Compat\Resources\Mixins\GetSubscriptions;
 use Univapay\Compat\Resources\Mixins\GetTransactions;
 use Univapay\Compat\Support\ListDispatcher;
+use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -109,14 +110,14 @@ class Store extends Resource
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($charges, $chargeId) {
                 return $charges->getCharge($this->id, $chargeId);
             },
             $bridge->handlers(),
             "GET /stores/{$this->id}/charges/$chargeId"
         );
-        return Charge::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(Charge::class, $result, $this->context);
     }
 
     public function getSubscription($subscriptionId)

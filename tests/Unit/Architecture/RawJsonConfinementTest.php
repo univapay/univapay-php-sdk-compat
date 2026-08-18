@@ -69,6 +69,13 @@ use PHPUnit\Framework\TestCase;
  *   relying on a generic "inside initSchema()" carve-out) because this audit's grep is a flat
  *   per-file check, not a method-body-aware parser; verified by direct reading that no OTHER
  *   method in this file touches raw JSON.
+ * - `Resources/Charge.php`, `Resources/Refund.php`, `Resources/Cancel.php`,
+ *   `Resources/PaymentToken/ThreeDSIssuerToken.php` -- typed-first hydration (see
+ *   `Support\TypedHydrator`, docs/ARCHITECTURE.md's "Response path" section): each class's
+ *   `hydrateFromTyped()` patches one or two fields the generated SDK's typed model can't carry
+ *   (or, for `Charge`, genuinely lacks -- `three_ds`'s MPI/`redirect_id` fields) from this same
+ *   response's raw decoded body (`error`/`metadata`/`payload` are stored raw verbatim by design;
+ *   `three_ds` is a real spec gap) instead of from the typed model.
  *
  * Every other resource class's raw-JSON handling happens through `Utility\Json\JsonSchema`'s
  * reflection-driven `parse()` (property-by-property, via each class's declared `$schema`), which
@@ -97,6 +104,10 @@ class RawJsonConfinementTest extends TestCase
         'Support/ListDispatcher.php',
         'Resources/Store.php',
         'Resources/TransactionToken.php',
+        'Resources/Charge.php',
+        'Resources/Refund.php',
+        'Resources/Cancel.php',
+        'Resources/PaymentToken/ThreeDSIssuerToken.php',
         'Errors/UnivapayRequestError.php',
         'Errors/UnivapayForbiddenError.php',
         'Errors/UnivapayUnauthorizedError.php',

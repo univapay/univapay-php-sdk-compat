@@ -2,6 +2,7 @@
 
 namespace Univapay\Compat\Resources\PaymentToken;
 
+use UnivaPay\Models\IssuerToken as GeneratedIssuerToken;
 use Univapay\Compat\Enums\CallMethod;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\FormatterUtils;
@@ -50,5 +51,26 @@ class OnlineToken
     {
         return JsonSchema::fromClass(self::class)
             ->upsert('call_method', false, FormatterUtils::getTypedEnum(CallMethod::class));
+    }
+
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. The generated SDK's
+     * `UnivaPay\Models\IssuerToken` already flattens both response shapes this class's own class
+     * doc describes (online/d-barai's `issuer_token`/`call_method`, and bank_transfer's distinct
+     * account fields) into one model with every field nullable -- no discriminated union to
+     * handle, and no gap: this class only ever hydrates `issuer_token`/`call_method`, both present
+     * on the typed model.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param mixed $context Unused -- this class's constructor takes no context.
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedIssuerToken)) {
+            return null;
+        }
+        return new self($typed->getIssuerToken(), CallMethod::fromValue($typed->getCallMethod()));
     }
 }
