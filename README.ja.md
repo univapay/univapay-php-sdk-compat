@@ -207,6 +207,38 @@ $chargesApi = $native->getChargesApi();
 [Phase 2 セクション](https://univapay.com/docs/#/http/onboarding-guides/guides/php-sdk-migration#migrating-further-to-the-native-sdk)
 にまとめてあり、ここでは重複させていません。
 
+## 非推奨通知（Deprecation notices）
+
+上記のフェーズ2移行（`native()` への移行）に着手する前に、自分たちのコードに残っている compat の
+呼び出し箇所を見つけるためのオプトイン機能です。
+
+```php
+$options = new UnivapayClientOptions();
+$options->deprecationNotices = true;
+$client = new UnivapayClient($storeAppToken, $options);
+
+$client->createCharge($tokenId, Money::USD(1000));
+// -> E_USER_DEPRECATED: Univapay\Compat\UnivapayClient::createCharge() is a compatibility-layer
+//    method; the native equivalent is ChargesApi::createCharge() via native(). See <guide-url>
+```
+
+- **`UnivapayClientOptions::$deprecationNotices`** —— `bool`、デフォルトは `false`。オフの場合は
+  完全にゼロオーバーヘッドです —— バックトレースの取得も記録も行わず、真偽値のチェック1回だけです。
+- **オンにすると、公開されている compat のメソッドすべて**（`UnivapayClient` のメソッド、
+  各リソースのメソッド —— `fetch()`/`patch()`/`capture()`/`cancel()`/`awaitResult()`/
+  `createRefund()` など ——、一覧取得系メソッド、`parseWebhookData()`）が、あなたのコードの
+  ある行から最初に到達した時点で `trigger_error(..., E_USER_DEPRECATED)` を1回発生させます。
+  同じ行からの再呼び出しは以降サイレントになり、別の行からの呼び出しは改めて通知されます。
+  各メッセージには、その compat メソッド名と対応するネイティブ SDK 側の呼び出し方が含まれます。
+- **カスケードしません。** `createCharge()` 自身のトークン取得 → 作成という内部の2段階フローの
+  ように、compat のメソッドが内部で他の compat メソッドを呼び出していても、通知はコード側が実際に
+  行った呼び出し1件分だけで、内部の呼び出しごとに増えることはありません。
+- **`native()` 自体は通知しません。** これはこの機能が導き先としている脱出口であって、フラグを
+  立てるべき呼び出し箇所ではないためです。
+- ステージング環境や開発環境でオンにして実際のトラフィックを流せば、`univapay-sdk-migrate` の
+  `--phase2` Rector セットが指摘するのと同じ呼び出し箇所が通知として浮かび上がってきます ——
+  両者は代替手段ではなく、組み合わせて使うことを想定しています。
+
 ## バージョニングとサンセットポリシー
 
 compat は 1.0 時点で機能凍結されています —— 新しい API 機能はすべて `univapay/client-sdk` にのみ

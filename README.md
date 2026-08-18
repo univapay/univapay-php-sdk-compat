@@ -194,6 +194,37 @@ getters, `awaitResult()` → `pollCharge()`, paginated lists → cursor paramete
 portal guide's [Phase 2 section](https://univapay.com/docs/#/http/onboarding-guides/guides/php-sdk-migration#migrating-further-to-the-native-sdk),
 not duplicated here.
 
+## Deprecation notices
+
+Opt-in runtime signal that helps a team find its own remaining compat call sites before doing the
+phase-2 migration onto `native()` above.
+
+```php
+$options = new UnivapayClientOptions();
+$options->deprecationNotices = true;
+$client = new UnivapayClient($storeAppToken, $options);
+
+$client->createCharge($tokenId, Money::USD(1000));
+// -> E_USER_DEPRECATED: Univapay\Compat\UnivapayClient::createCharge() is a compatibility-layer
+//    method; the native equivalent is ChargesApi::createCharge() via native(). See <guide-url>
+```
+
+- **`UnivapayClientOptions::$deprecationNotices`** — `bool`, defaults to `false`. Off is zero
+  overhead: no backtrace, no bookkeeping, just one boolean check.
+- **On, every public compat method** (`UnivapayClient` methods, resource methods —
+  `fetch()`/`patch()`/`capture()`/`cancel()`/`awaitResult()`/`createRefund()`/etc. — list methods,
+  `parseWebhookData()`) triggers one `trigger_error(..., E_USER_DEPRECATED)` the first time it's
+  reached from a given line of your code; calling that same line again stays silent, a different
+  line notifies again. Each message names the compat method and its native-SDK equivalent.
+- **No cascade.** A compat method that calls other compat methods internally —
+  `createCharge()`'s own token-fetch-then-create flow, for instance — emits only the one notice for
+  the call your code actually made, not one per internal step.
+- **`native()` never notifies.** It's the escape hatch this feature is steering you towards, not a
+  call site to flag.
+- Turn it on in a staging/dev environment, exercise real traffic, and the notices surface exactly
+  the call sites `univapay-sdk-migrate`'s `--phase2` Rector set will also want you to look at —
+  the two are meant to be used together, not as alternatives to each other.
+
 ## Versioning and sunset policy
 
 Compat is feature-frozen as of 1.0: every new API capability lands in `univapay/client-sdk` only,
