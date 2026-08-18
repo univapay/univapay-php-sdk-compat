@@ -18,6 +18,7 @@ use Univapay\Compat\Resources\PaymentToken\ThreeDSIssuerToken;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -448,8 +449,8 @@ class Charge extends Resource
             $this->storeId,
             $this->id,
             $query,
-            function ($raw) {
-                return Refund::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Refund::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }
@@ -462,8 +463,8 @@ class Charge extends Resource
             $this->storeId,
             $this->id,
             $query,
-            function ($raw) {
-                return Cancel::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Cancel::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }

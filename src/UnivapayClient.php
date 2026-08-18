@@ -48,6 +48,7 @@ use Univapay\Compat\Support\CompatContext;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 
 /**
  * Port of the old SDK's `UnivapayClient` -- the facade every consumer constructs directly
@@ -562,8 +563,9 @@ class UnivapayClient
         return ListDispatcher::listAllCharges(
             $this->bridge,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [new CompatContext($this->bridge)]);
+            function ($raw, $typed = null) {
+                $result = new TypedResult($raw, $typed, false);
+                return TypedHydrator::resolve(Charge::class, $result, new CompatContext($this->bridge));
             }
         );
     }

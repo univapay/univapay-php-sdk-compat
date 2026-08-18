@@ -14,6 +14,7 @@ use Univapay\Compat\Resources\Mixins\GetSubscriptions;
 use Univapay\Compat\Resources\Mixins\GetTransactions;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -202,8 +203,8 @@ class Store extends Resource
             $bridge,
             $this->id,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Charge::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }

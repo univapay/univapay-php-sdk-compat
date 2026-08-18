@@ -22,6 +22,8 @@ use Univapay\Compat\Resources\Subscription\ScheduleSettings;
 use Univapay\Compat\Resources\Subscription\SubscriptionPlan;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -387,8 +389,8 @@ class Subscription extends Resource
             $this->storeId,
             $this->id,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Charge::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }
