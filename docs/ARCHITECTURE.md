@@ -110,7 +110,7 @@ the dispatch mechanism is needed. As of this writing:
 | `Resources/Merchant.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Merchant`; `configuration` (required) dispatched to `Configuration::hydrateFromTyped()`. |
 | `Resources/Store.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Store`; `configuration` (optional, unlike `Merchant`'s required one) dispatched to `Configuration::hydrateFromTyped()`. |
 | `Resources/Configuration/*` (13 of 18 classes) | **Typed-primary** | Field-by-field audit against the generated `MerchantWebhookConfiguration` family (see below) found every field has a typed counterpart except a handful always stored raw by design, plus one real bug (see below) — flipped: `Configuration`, `TransferSchedule`, `UserTransactionsConfiguration`, `CardConfiguration`, `QrScanConfiguration`, `ConvenienceConfiguration`, `PaidyConfiguration`, `RecurringConfiguration`, `CardChargeCvvConfirmation`, `SecurityConfiguration`, `LimitChargeByCardConfiguration`, `InstallmentsConfiguration`, `CardBrandPercentFees`. |
-| `Resources/CheckoutInfo.php` and its own-only `Configuration/*` classes (`OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`, `ThemeConfiguration`, `ColorsConfiguration`) | Raw-primary | `GET /checkout_info` has its OWN separate generated model family (`Checkout*`, e.g. `CheckoutCardConfiguration`), distinct from `MerchantWebhookConfiguration` — NOT audited. `CheckoutInfo` has no `hydrateFromTyped()` of its own, so `TypedHydrator` never attempts typed hydration for it regardless of what the *shared* Configuration classes above now support (their `hydrateFromTyped()` only recognizes the `MerchantWebhookConfiguration` family and declines harmlessly for anything else — see e.g. `ConvenienceConfiguration`'s own doc). |
+| `Resources/CheckoutInfo.php` and its own-only `Configuration/*` classes (`OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`, `ThemeConfiguration`, `ColorsConfiguration`) | **Typed-primary** | `GET /checkout_info` has its OWN separate generated model family (`Checkout*`, e.g. `CheckoutCardConfiguration`) -- audited field by field (see "Configuration tree audit findings" below) and found clean except `CardConfiguration`'s `card_limit` (already raw-patched for the Merchant/Store family -- the Checkout family's `CheckoutCardConfiguration::getCardLimit()` returns an entirely different TYPE, a nested `CardLimit` object rather than a plain int, so raw-patching it also sidesteps that divergence) and the same `QrScanConfiguration` wire-key bug. The 4 shared classes (`CardConfiguration`/`QrScanConfiguration`/`ConvenienceConfiguration`/`PaidyConfiguration`) now recognize EITHER generated family via a second `instanceof` branch. |
 | `Resources/Subscription.php` | Raw-primary | **Confirmed spec gap** (a spec fix is in flight separately): the generated `UnivaPay\Models\Subscription` has no `cyclical_period`, `cycles_left`/`payments_left`, `charge_id`, `subscription_plan`, `installment_plan`, `amount_left`/`amount_left_formatted`, or `three_ds` — fields the raw parser reads and this compat resource exposes. Do not patch-from-raw here: patching this many fields would leave almost nothing typed, so this stays raw-primary until the spec catches up. |
 | List endpoints (`Support\ListDispatcher`) | Mixed — see below | Charge/Refund/Cancel lists are typed-first; every other list endpoint is raw-primary. |
 | `Resources/Transfer.php`, `Resources/BankAccount.php`, `Resources/Ledger.php`, `Resources/TransferStatusChange.php` | Raw-primary, permanently | These resources have no live API endpoint at all (`fetchCall()`/`updateCall()` throw `UnivapayUnsupportedFeatureError` unconditionally) — the ONLY place they're ever hydrated is `UnivapayClient::parseWebhookData()`, parsing a consumer-supplied array that never passed through `ApiCaller`/a generated `Apis\*` call in the first place. There is no typed result to prefer in that path, structurally, not as a matter of prioritization. |
@@ -127,27 +127,41 @@ Money-converted, even before typed-first hydration existed).
 ## Configuration tree audit findings
 
 `Resources/Configuration/*` nests under both `Merchant`/`Store` (`configuration`, backed by the
-generated `MerchantWebhookConfiguration` family) and `CheckoutInfo` (its own separate `Checkout*`
-family — see the table above). The audit checked every `Configuration\*` class nested under
-`Merchant`/`Store` (13 of the 18 total classes; the other 5 are `CheckoutInfo`-only, not touched)
-field by field against the generated model. Findings:
+generated `MerchantWebhookConfiguration` family) and `CheckoutInfo` (`GET /checkout_info`, backed
+by its own, entirely separate `Checkout*` family — e.g. `CheckoutCardConfiguration` vs
+`MerchantWebhookCardConfiguration`, two different generated classes for what compat represents as
+the SAME `CardConfiguration`). Both families were audited field by field, using the same method:
+list every `initSchema()` upsert key, find the matching typed getter, record any key with no typed
+counterpart. All 18 `Configuration\*` classes are now typed-primary. Findings:
 
-- **13 classes have a clean typed counterpart for every field** except a handful always stored raw
-  by design (see the `GenericMetadata` note above) — all 13 are now typed-primary.
-- **One real bug, found and deliberately preserved**: `QrScanConfiguration::$forbiddenQrScanGateway`
-  reads the WRONG wire key. The auto-derived raw schema has always read
-  `forbidden_qr_scan_gateway` (singular, from the property name), but the generated model's own
-  `@maps` annotation for the equivalent field is `forbidden_qr_scan_gateways` (**plural** — see
-  `UnivaPay\Models\MerchantWebhookQrScanConfiguration::setForbiddenQrScanGateways()`). The real
-  field name evidently changed upstream and the raw path never caught up, so this property has
-  always been `null` in practice. `hydrateFromTyped()` reads the SAME (singular, wrong) key from
-  the raw body on purpose — using the typed model's own correctly-keyed getter would silently
-  start returning real data, a behavior change typed-first hydration must not introduce. See
-  `QrScanConfiguration`'s own class doc and
-  `ConfigurationDifferentialTest::testQrScanForbiddenGatewaysWireKeyMismatchIsPreservedAsNullOnBothPaths()`.
-- **`CheckoutInfo`'s own `Configuration/*`-adjacent classes were not audited** — a genuinely
-  separate generated model family (`Checkout*`), not a subset of `MerchantWebhookConfiguration`.
-  Deferred; `CheckoutInfo` stays entirely raw-primary.
+- **Every field has a typed counterpart in both families** except a handful always stored raw by
+  design (see the `GenericMetadata` note above).
+- **One real bug, found and deliberately preserved, in BOTH families**:
+  `QrScanConfiguration::$forbiddenQrScanGateway` reads the WRONG wire key. The auto-derived raw
+  schema has always read `forbidden_qr_scan_gateway` (singular, from the property name), but
+  BOTH generated models' own `@maps` annotation for the equivalent field is
+  `forbidden_qr_scan_gateways` (**plural** — see `MerchantWebhookQrScanConfiguration`/
+  `CheckoutQrScanConfiguration::setForbiddenQrScanGateways()`). The real field name evidently
+  changed upstream and the raw path never caught up, so this property has always been `null` in
+  practice, regardless of which endpoint hydrated it. `hydrateFromTyped()` reads the SAME
+  (singular, wrong) key from the raw body on purpose — using either typed model's own
+  correctly-keyed getter would silently start returning real data, a behavior change typed-first
+  hydration must not introduce. See `QrScanConfiguration`'s own class doc,
+  `ConfigurationDifferentialTest::testQrScanForbiddenGatewaysWireKeyMismatchIsPreservedAsNullOnBothPaths()`,
+  and `CheckoutInfoDifferentialTest`'s test of the same name.
+- **One shape divergence between the two families, also handled by raw-patching**:
+  `CardConfiguration::$cardLimit` is `?int` on `MerchantWebhookCardConfiguration` but a nested
+  `CardLimit` object (`{amount, currency, amountFormatted, duration}`) on
+  `CheckoutCardConfiguration` — two different TYPES for the same compat field depending on which
+  endpoint hydrated it. Since compat has always stored this raw and untyped anyway, `card_limit`
+  is read from the raw body for BOTH families rather than choosing one shape to trust. See
+  `CardConfiguration`'s own class doc and
+  `CheckoutInfoDifferentialTest::testCardLimitObjectShapeSurvivesViaTheRawPatch()`.
+- 4 classes are nested under both families and now recognize either via a second `instanceof`
+  branch: `CardConfiguration`, `QrScanConfiguration`, `ConvenienceConfiguration`,
+  `PaidyConfiguration`. 5 classes are `CheckoutInfo`-only and recognize only the `Checkout*`
+  family: `OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`,
+  `ThemeConfiguration`, `ColorsConfiguration`.
 
 ## List endpoints
 
@@ -213,6 +227,7 @@ Raw array access on a decoded HTTP body (`$body[`, `$json[`, `$raw[`, `$decoded[
 | `Resources/Configuration/InstallmentsConfiguration.php` | Typed-first hydration: `hydrateFromTyped()` patches `min_charge_amount` from the raw body by design |
 | `Resources/Configuration/QrScanConfiguration.php` | Typed-first hydration: `hydrateFromTyped()` patches `forbidden_qr_scan_gateway` from the raw body — preserving a pre-existing wire-key bug, see "Configuration tree audit findings" |
 | `Resources/Configuration/RecurringConfiguration.php` | Typed-first hydration: sub-body extraction for its nested `CardChargeCvvConfirmation` |
+| `Resources/CheckoutInfo.php` | Typed-first hydration: `hydrateFromTyped()`'s sub-body extraction for its nested `CardConfiguration`/`QrScanConfiguration` |
 
 `UnivapayClient::parseWebhookData(array $data)` reads `$data['event']`/`$data['data']` — but on a
 consumer-supplied array (that method's documented contract), never a decoded API response. It
