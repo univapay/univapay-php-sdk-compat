@@ -160,14 +160,14 @@ class Store extends Resource
     {
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($subscriptions, $subscriptionId) {
                 return $subscriptions->getSubscription($this->id, $subscriptionId);
             },
             $bridge->handlers(),
             "GET /stores/{$this->id}/subscriptions/$subscriptionId"
         );
-        return Subscription::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(Subscription::class, $result, $this->context);
     }
 
     /**

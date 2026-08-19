@@ -367,14 +367,14 @@ class UnivapayClient
     public function getSubscription($storeId, $subscriptionId)
     {
         $subscriptions = $this->bridge->subscriptions();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($subscriptions, $storeId, $subscriptionId) {
                 return $subscriptions->getSubscription($storeId, $subscriptionId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/subscriptions/$subscriptionId"
         );
-        return Subscription::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(Subscription::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**

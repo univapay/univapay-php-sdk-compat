@@ -4,14 +4,19 @@ namespace Univapay\Compat\Resources;
 
 use DateInterval;
 use DateTime;
+use DateTimeZone;
 use Money\Currency;
 use Money\Money;
+use UnivaPay\Models\Subscription as GeneratedSubscription;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\Field;
+use Univapay\Compat\Enums\InstallmentPlanType;
 use Univapay\Compat\Enums\PaymentType;
 use Univapay\Compat\Enums\Period;
 use Univapay\Compat\Enums\Reason;
+use Univapay\Compat\Enums\SubscriptionPlanType;
 use Univapay\Compat\Enums\SubscriptionStatus;
+use Univapay\Compat\Enums\ThreeDSMode;
 use Univapay\Compat\Errors\UnivapayLogicError;
 use Univapay\Compat\Errors\UnivapayValidationError;
 use Univapay\Compat\Resources\Mixins\GetCharges;
@@ -172,6 +177,180 @@ class Subscription extends Resource
             ->upsert('three_ds', false, PaymentThreeDS::getSchema()->getParser());
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. `univapay/client-sdk` 1.2.0
+     * closed the spec gap that kept this resource raw-primary (see docs/ARCHITECTURE.md): the
+     * generated `UnivaPay\Models\Subscription` now carries `three_ds`, `cyclical_period`,
+     * `subscription_plan`, `installment_plan`, `amount_left`/`amount_left_formatted` -- every
+     * field this schema reads now has a typed counterpart, with two exceptions patched from raw:
+     *
+     * - `metadata`/`payments_left`: `metadata` is the usual GenericMetadata-is-always-raw
+     *   treatment (see `Charge`'s own doc). `payments_left` is a PRE-EXISTING, unrelated mismatch:
+     *   this class's own auto-derived schema has always read `payments_left`, but the generated
+     *   model's equivalent field is named `cycles_left` -- a different key, not just a differently
+     *   cased one. Reading it from $body here preserves the exact existing behavior either way:
+     *   present, it flows through unchanged; absent (e.g. if the real API has since renamed it to
+     *   `cycles_left`), it stays null on both paths, same as it always has. `cycles_left` itself
+     *   is not read anywhere -- this class has no property to receive it, same as `charge_id`
+     *   (also new in 1.2.0, also has no compat property).
+     * - `next_payment`: parsed from $body's raw sub-object via `ScheduledPayment`'s existing raw
+     *   parser, not `SubscriptionNextPayment`'s typed getters. This is NOT a missing-typed-field
+     *   gap (every field `ScheduledPayment` reads has a typed counterpart on
+     *   `SubscriptionNextPayment`) -- `ScheduledPayment`'s own constructor does its OWN raw-string
+     *   parsing (`new DateTimeZone($zoneId)`, `date_create($dueDate)->setTimezone(...)`, `new
+     *   Currency($currency)`, `new Money($amount, $currency)`, `$createdOn ?? 'now'`), unlike
+     *   every other nested type here, which goes through `FormatterUtils`. Feeding it the typed
+     *   getters' already-parsed `\DateTime`/int values would require reformatting them back to
+     *   strings first, for no real benefit -- `ScheduledPayment` itself is not flipped as a
+     *   resource by this change.
+     *
+     * `three_ds`'s typed source, `SubscriptionThreeDs`, has no MPI fields (`mode`/
+     * `redirect_endpoint`/`redirect_id` only) -- same gap `Charge`'s `ChargeThreeDs` has (see its
+     * own doc). Unlike `Charge`, `redirect_id` IS present here, so only `threeDSMPI` is missing;
+     * since MPI data is request-only (never returned by the server -- see `PaymentThreeDS`'s own
+     * class doc), it is hardcoded null rather than patched from raw.
+     *
+     * Declines (null) when a required field (`currency`/`amount`/`schedule_settings`'s own
+     * `zone_id`/`status`/`mode`/`created_on`) is missing from the typed model.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedSubscription)) {
+            return null;
+        }
+        $currencyValue = $typed->getCurrency();
+        $amount = $typed->getAmount();
+        $status = $typed->getStatus();
+        $mode = $typed->getMode();
+        $createdOn = $typed->getCreatedOn();
+        $scheduleSettingsTyped = $typed->getScheduleSettings();
+        if (
+            $currencyValue === null || $amount === null || $status === null || $mode === null
+            || $createdOn === null || $scheduleSettingsTyped === null
+        ) {
+            return null;
+        }
+        $scheduleSettings = self::scheduleSettingsFromTyped($scheduleSettingsTyped);
+        if ($scheduleSettings === null) {
+            return null;
+        }
+
+        $currency = new Currency($currencyValue);
+
+        $periodValue = $typed->getPeriod();
+        $cyclicalPeriodValue = $typed->getCyclicalPeriod();
+        $initialAmountValue = $typed->getInitialAmount();
+        $amountLeftValue = $typed->getAmountLeft();
+        $firstChargeCaptureAfterValue = $typed->getFirstChargeCaptureAfter();
+
+        $nextPaymentTyped = $typed->getNextPayment();
+        $nextPayment = null;
+        if ($nextPaymentTyped !== null && isset($body['next_payment']) && is_array($body['next_payment'])) {
+            $nextPayment = ScheduledPayment::getSchema()->parse($body['next_payment'], [$context]);
+        }
+
+        $subscriptionPlanTyped = $typed->getSubscriptionPlan();
+        $subscriptionPlan = $subscriptionPlanTyped !== null
+            ? self::subscriptionPlanFromTyped($subscriptionPlanTyped, $currency)
+            : null;
+
+        $installmentPlanTyped = $typed->getInstallmentPlan();
+        $installmentPlan = $installmentPlanTyped !== null
+            ? self::installmentPlanFromTyped($installmentPlanTyped)
+            : null;
+
+        $threeDsTyped = $typed->getThreeDs();
+        $threeDS = $threeDsTyped !== null ? self::threeDSFromTyped($threeDsTyped) : null;
+
+        return new self(
+            $typed->getId(),
+            $typed->getStoreId(),
+            $typed->getTransactionTokenId(),
+            $currency,
+            new Money($amount, $currency),
+            $typed->getAmountFormatted(),
+            $periodValue !== null ? Period::fromValue($periodValue) : null,
+            $cyclicalPeriodValue !== null ? new DateInterval($cyclicalPeriodValue) : null,
+            $scheduleSettings,
+            array_key_exists('payments_left', $body) ? $body['payments_left'] : null,
+            SubscriptionStatus::fromValue($status),
+            array_key_exists('metadata', $body) ? $body['metadata'] : null,
+            AppTokenMode::fromValue($mode),
+            $createdOn,
+            $amountLeftValue !== null ? new Money($amountLeftValue, $currency) : null,
+            $typed->getAmountLeftFormatted(),
+            $initialAmountValue !== null ? new Money($initialAmountValue, $currency) : null,
+            $typed->getInitialAmountFormatted(),
+            $nextPayment,
+            $subscriptionPlan,
+            $installmentPlan,
+            $typed->getFirstChargeAuthorizationOnly(),
+            $firstChargeCaptureAfterValue !== null ? new DateInterval($firstChargeCaptureAfterValue) : null,
+            $threeDS,
+            $context
+        );
+    }
+
+    /** @return ScheduleSettings|null Null if `zone_id` (required) is missing. */
+    private static function scheduleSettingsFromTyped($typed)
+    {
+        $zoneIdValue = $typed->getZoneId();
+        if ($zoneIdValue === null) {
+            return null;
+        }
+        $retryIntervalValue = $typed->getRetryInterval();
+        return new ScheduleSettings(
+            $typed->getStartOn(),
+            new DateTimeZone($zoneIdValue),
+            $typed->getPreserveEndOfMonth(),
+            $retryIntervalValue !== null ? new DateInterval($retryIntervalValue) : null
+        );
+    }
+
+    /** @return SubscriptionPlan|null Null if `plan_type` (required) is missing. */
+    private static function subscriptionPlanFromTyped($typed, Currency $currency)
+    {
+        $planTypeValue = $typed->getPlanType();
+        if ($planTypeValue === null) {
+            return null;
+        }
+        $fixedCycleAmountValue = $typed->getFixedCycleAmount();
+        return new SubscriptionPlan(
+            SubscriptionPlanType::fromValue($planTypeValue),
+            $typed->getFixedCycles(),
+            $fixedCycleAmountValue !== null ? new Money($fixedCycleAmountValue, $currency) : null
+        );
+    }
+
+    /** @return InstallmentPlan|null Null if `plan_type` (required) is missing. */
+    private static function installmentPlanFromTyped($typed)
+    {
+        $planTypeValue = $typed->getPlanType();
+        if ($planTypeValue === null) {
+            return null;
+        }
+        return new InstallmentPlan(InstallmentPlanType::fromValue($planTypeValue), $typed->getFixedCycles());
+    }
+
+    /**
+     * @return PaymentThreeDS `threeDSMPI` is always null -- request-only data, never present in a
+     *         response (see this method's caller's own doc).
+     */
+    private static function threeDSFromTyped($typed)
+    {
+        return new PaymentThreeDS(
+            $typed->getRedirectEndpoint(),
+            ThreeDSMode::fromValue($typed->getMode()),
+            null,
+            $typed->getRedirectId()
+        );
+    }
+
     protected function pollableStatuses()
     {
         return [
@@ -192,7 +371,7 @@ class Subscription extends Resource
     {
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($subscriptions) {
                 return $subscriptions->getSubscription($this->storeId, $this->id);
             },
@@ -211,7 +390,7 @@ class Subscription extends Resource
     {
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function ($idempotencyKey) use ($subscriptions, $updates) {
                 return $subscriptions->updateSubscription($this->storeId, $this->id, $idempotencyKey, $updates);
             },
@@ -227,14 +406,14 @@ class Subscription extends Resource
     {
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($subscriptions) {
                 return $subscriptions->getSubscription($this->storeId, $this->id, true);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/subscriptions/{$this->id}?polling=true"
         );
-        return self::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($result);
     }
 
     /**
