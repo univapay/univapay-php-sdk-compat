@@ -7,6 +7,7 @@ use Univapay\Compat\Enums\ActiveFilter;
 use Univapay\Compat\Enums\TokenType;
 use Univapay\Compat\Errors\UnivapayValidationError;
 use Univapay\Compat\Resources\Mixins\GetTransactionTokens;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * Covers the fix for old `listTransactionTokensByOptions()` parsing the response as
@@ -63,6 +64,11 @@ class GetTransactionTokensFixture
 
     /** @var int */
     public $hookCallCount = 0;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 
     protected function listTransactionTokensPage(array $query)
     {

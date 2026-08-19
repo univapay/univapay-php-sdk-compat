@@ -8,6 +8,7 @@ use Univapay\Compat\Resources\Mixins\GetBankAccounts;
 use Univapay\Compat\Resources\Mixins\GetLedgers;
 use Univapay\Compat\Resources\Mixins\GetStatusChanges;
 use Univapay\Compat\Resources\Mixins\GetTransfers;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * `GetTransfers`, `GetLedgers`, `GetStatusChanges`, `GetBankAccounts` are UNSUPPORTED
@@ -84,19 +85,39 @@ class UnsupportedMixinsTest extends TestCase
 class GetTransfersFixture
 {
     use GetTransfers;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 }
 
 class GetLedgersFixture
 {
     use GetLedgers;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 }
 
 class GetStatusChangesFixture
 {
     use GetStatusChanges;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 }
 
 class GetBankAccountsFixture
 {
     use GetBankAccounts;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 }

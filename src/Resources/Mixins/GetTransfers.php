@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Errors\UnivapayUnsupportedFeatureError;
+use Univapay\Compat\Support\DeprecationNotifier;
 
 /**
  * Port of the old SDK's `Resources\Mixins\GetTransfers`. UNSUPPORTED: the new transport engine
@@ -29,6 +30,11 @@ trait GetTransfers
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransfers()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Transfer listing');
     }
 
@@ -39,6 +45,11 @@ trait GetTransfers
      */
     public function listTransfersByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransfersByOptions()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Transfer listing');
     }
 }

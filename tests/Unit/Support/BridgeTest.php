@@ -185,6 +185,24 @@ class BridgeTest extends TestCase
         }
     }
 
+    // --- deprecationNoticesEnabled(): backs Support\DeprecationNotifier's hook call sites -------
+
+    public function testDeprecationNoticesEnabledDefaultsToFalse()
+    {
+        $bridge = new Bridge($this->storeJwt());
+
+        $this->assertFalse($bridge->deprecationNoticesEnabled());
+    }
+
+    public function testDeprecationNoticesEnabledReflectsTheOptionPassedIn()
+    {
+        $options = new UnivapayClientOptions();
+        $options->deprecationNotices = true;
+        $bridge = new Bridge($this->storeJwt(), $options);
+
+        $this->assertTrue($bridge->deprecationNoticesEnabled());
+    }
+
     private function fakeHandler(): RequestHandler
     {
         return new class implements RequestHandler {

@@ -7,6 +7,7 @@ use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Mixins\GetCancels;
 use Univapay\Compat\Resources\Mixins\GetRefunds;
 use Univapay\Compat\Resources\Mixins\GetScheduledPayments;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * `GetRefunds`, `GetCancels`, `GetScheduledPayments` all share the same cursor/limit/
@@ -64,6 +65,11 @@ class GetRefundsFixture
     /** @var array */
     public $capturedQuery;
 
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
     protected function listRefundsPage(array $query)
     {
         $this->capturedQuery = $query;
@@ -78,6 +84,11 @@ class GetCancelsFixture
     /** @var array */
     public $capturedQuery;
 
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
     protected function listCancelsPage(array $query)
     {
         $this->capturedQuery = $query;
@@ -91,6 +102,11 @@ class GetScheduledPaymentsFixture
 
     /** @var array */
     public $capturedQuery;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 
     protected function listScheduledPaymentsPage(array $query)
     {

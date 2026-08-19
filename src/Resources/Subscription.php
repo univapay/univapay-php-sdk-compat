@@ -25,6 +25,7 @@ use Univapay\Compat\Resources\Subscription\InstallmentPlan;
 use Univapay\Compat\Resources\Subscription\ScheduledPayment;
 use Univapay\Compat\Resources\Subscription\ScheduleSettings;
 use Univapay\Compat\Resources\Subscription\SubscriptionPlan;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
@@ -367,6 +368,29 @@ class Subscription extends Resource
 
     // --- Resource wiring (fetch/update/awaitResult) ----------------------------------------------
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'SubscriptionsApi::getSubscription()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'SubscriptionsApi::updateSubscription()';
+    }
+
+    protected function nativePollEquivalent(): string
+    {
+        return 'SubscriptionsApi::pollSubscription()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetCharges::nativeListChargesEquivalent()
+     */
+    protected function nativeListChargesEquivalent(): string
+    {
+        return 'SubscriptionsApi::listSubscriptionCharges()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
@@ -431,6 +455,11 @@ class Subscription extends Resource
         ?InstallmentPlan $installmentPlan = null,
         ?DateInterval $cyclicalPeriod = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Subscription::patch()',
+            'SubscriptionsApi::updateSubscription()'
+        );
         if (SubscriptionStatus::CANCELED() == $this->status) {
             throw new UnivapayLogicError(Reason::CANNOT_CHANGE_CANCELED_SUBSCRIPTION());
         }
@@ -490,6 +519,11 @@ class Subscription extends Resource
      */
     public function cancel()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Subscription::cancel()',
+            'SubscriptionsApi::cancelSubscription()'
+        );
         if ($this->isTerminal()) {
             throw new UnivapayLogicError(Reason::SUBSCRIPTION_ALREADY_ENDED());
         }

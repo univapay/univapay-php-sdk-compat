@@ -15,6 +15,7 @@ use Univapay\Compat\Resources\Mixins\GetCancels;
 use Univapay\Compat\Resources\Mixins\GetRefunds;
 use Univapay\Compat\Resources\PaymentToken\OnlineToken;
 use Univapay\Compat\Resources\PaymentToken\ThreeDSIssuerToken;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
@@ -267,6 +268,21 @@ class Charge extends Resource
 
     // --- Resource wiring (fetch/update/awaitResult) ----------------------------------------------
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'ChargesApi::getCharge()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'ChargesApi::updateCharge()';
+    }
+
+    protected function nativePollEquivalent(): string
+    {
+        return 'ChargesApi::pollCharge()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
@@ -316,6 +332,11 @@ class Charge extends Resource
      */
     public function patch(array $metadata)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::patch()',
+            'ChargesApi::updateCharge()'
+        );
         return $this->update(['metadata' => $metadata]);
     }
 
@@ -331,6 +352,11 @@ class Charge extends Resource
         $message = null,
         ?array $metadata = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::createRefund()',
+            'RefundsApi::createRefund()'
+        );
         // CHARGEBACK guard lives inside RequestModelFactory::refundCreate() -- verbatim old-SDK
         // check, not duplicated here.
         $request = RequestModelFactory::refundCreate($money, $reason, $message, $metadata);
@@ -362,6 +388,11 @@ class Charge extends Resource
      */
     public function capture(?Money $money = null)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::capture()',
+            'ChargesApi::captureCharge()'
+        );
         $request = $money !== null ? RequestModelFactory::chargeCapture($money) : null;
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
@@ -380,6 +411,11 @@ class Charge extends Resource
      */
     public function cancel(?array $metadata = null)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::cancel()',
+            'CancelsApi::createCancel()'
+        );
         $request = RequestModelFactory::cancelCreate($metadata);
         $bridge = $this->context->bridge();
         $cancels = $bridge->cancels();
@@ -405,6 +441,11 @@ class Charge extends Resource
      */
     public function qrMerchantToken()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::qrMerchantToken()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError(
             'Charge::qrMerchantToken() (deprecated /qr endpoint, no real usage -- see the QR merchant '
             . "token's own data.qr_image_url instead)"
@@ -413,6 +454,11 @@ class Charge extends Resource
 
     public function onlineToken()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::onlineToken()',
+            'ChargesApi::getChargeIssuerToken()'
+        );
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
         $result = $bridge->caller()->callTyped(
@@ -427,6 +473,11 @@ class Charge extends Resource
 
     public function threeDSIssuerToken()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\Resources\Charge::threeDSIssuerToken()',
+            'ChargesApi::getChargeThreeDsIssuerToken()'
+        );
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
         $result = $bridge->caller()->callTyped(

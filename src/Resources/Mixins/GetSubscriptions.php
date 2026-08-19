@@ -8,6 +8,7 @@ use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Enums\SubscriptionStatus;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -29,6 +30,14 @@ trait GetSubscriptions
     abstract protected function listSubscriptionsPage(array $query);
 
     /**
+     * @return string Native-SDK equivalent for THIS class's own list endpoint -- see
+     *         `Support\DeprecationNotifier`'s class doc. Implemented per-class because
+     *         `GetSubscriptions` is shared by `UnivapayClient` (merchant-wide) and `Store`
+     *         (store-scoped) -- two different underlying native list endpoints.
+     */
+    abstract protected function nativeListSubscriptionsEquivalent(): string;
+
+    /**
      * @param string|null $search
      * @param SubscriptionStatus|null $status
      * @param AppTokenMode|null $mode
@@ -45,6 +54,11 @@ trait GetSubscriptions
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listSubscriptions()',
+            $this->nativeListSubscriptionsEquivalent()
+        );
         $query = FunctionalUtils::stripNulls([
             'search' => $search,
             'status' => isset($status) ? $status->getValue() : null,
@@ -63,6 +77,11 @@ trait GetSubscriptions
      */
     public function listSubscriptionsByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listSubscriptionsByOptions()',
+            $this->nativeListSubscriptionsEquivalent()
+        );
         $rules = [
             'status' => 'ValidationHelper::getEnumValue',
             'type' => 'ValidationHelper::getEnumValue',

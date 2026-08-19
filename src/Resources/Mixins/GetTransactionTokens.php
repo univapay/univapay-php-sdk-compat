@@ -12,6 +12,7 @@ use Univapay\Compat\Enums\Reason;
 use Univapay\Compat\Enums\TokenType;
 use Univapay\Compat\Errors\UnivapayValidationError;
 use Univapay\Compat\Resources\Paginated;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\OptionsValidator;
 
@@ -52,6 +53,11 @@ trait GetTransactionTokens
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransactionTokens()',
+            'TransactionTokensApi::listAllTransactionTokens()'
+        );
         if (isset($type) && $type === TokenType::ONE_TIME()) {
             throw new UnivapayValidationError(Field::TYPE(), Reason::INVALID_TOKEN_TYPE());
         }
@@ -75,6 +81,11 @@ trait GetTransactionTokens
      */
     public function listTransactionTokensByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listTransactionTokensByOptions()',
+            'TransactionTokensApi::listAllTransactionTokens()'
+        );
         $rules = [
             'active' => 'ValidationHelper::getEnumValue',
             'status' => 'ValidationHelper::getEnumValue',

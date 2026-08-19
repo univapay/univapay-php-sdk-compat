@@ -5,6 +5,7 @@ namespace Univapay\Compat\Tests\Unit\Resources\Mixins;
 use PHPUnit\Framework\TestCase;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Mixins\GetStores;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * Covers the fix for old `listStores()` calling `getCancelContext()` instead of `getStoreContext()`
@@ -57,6 +58,11 @@ class GetStoresFixture
 
     /** @var int */
     public $hookCallCount = 0;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
 
     protected function listStoresPage(array $query)
     {

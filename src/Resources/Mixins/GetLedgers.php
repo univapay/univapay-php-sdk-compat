@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Errors\UnivapayUnsupportedFeatureError;
+use Univapay\Compat\Support\DeprecationNotifier;
 
 /**
  * Port of the old SDK's `Resources\Mixins\GetLedgers` (old `Transfer` ledgers -- NOT the same
@@ -29,6 +30,11 @@ trait GetLedgers
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listLedgers()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Transfer ledgers');
     }
 
@@ -39,6 +45,11 @@ trait GetLedgers
      */
     public function listLedgersByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listLedgersByOptions()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Transfer ledgers');
     }
 }

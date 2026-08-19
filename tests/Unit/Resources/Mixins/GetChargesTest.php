@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Resources\Mixins\GetCharges;
+use Univapay\Compat\Tests\Support\NoticesDisabledBridgeStub;
 
 /**
  * Query-array construction for `GetCharges`, isolated from `ListDispatcher`/`Bridge`/HTTP: the
@@ -139,6 +140,16 @@ class GetChargesFixture
 
     /** @var array */
     public $capturedQuery;
+
+    protected function getBridge()
+    {
+        return new NoticesDisabledBridgeStub();
+    }
+
+    protected function nativeListChargesEquivalent(): string
+    {
+        return 'ChargesApi::listAllCharges()';
+    }
 
     protected function listChargesPage(array $query)
     {

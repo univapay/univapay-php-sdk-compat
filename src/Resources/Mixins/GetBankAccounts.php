@@ -6,6 +6,7 @@ namespace Univapay\Compat\Resources\Mixins;
 
 use Univapay\Compat\Enums\CursorDirection;
 use Univapay\Compat\Errors\UnivapayUnsupportedFeatureError;
+use Univapay\Compat\Support\DeprecationNotifier;
 
 /**
  * Port of the old SDK's `Resources\Mixins\GetBankAccounts`. UNSUPPORTED: the new transport engine
@@ -37,6 +38,11 @@ trait GetBankAccounts
         $limit = null,
         ?CursorDirection $cursorDirection = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listBankAccounts()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Bank account listing');
     }
 
@@ -47,6 +53,11 @@ trait GetBankAccounts
      */
     public function listBankAccountContextsByOptions(array $opts = [])
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            static::class . '::listBankAccountContextsByOptions()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('Bank account listing');
     }
 }

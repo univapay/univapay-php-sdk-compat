@@ -45,6 +45,7 @@ use Univapay\Compat\Resources\Transfer;
 use Univapay\Compat\Resources\WebhookPayload;
 use Univapay\Compat\Support\Bridge;
 use Univapay\Compat\Support\CompatContext;
+use Univapay\Compat\Support\DeprecationNotifier;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
 use Univapay\Compat\Support\TypedHydrator;
@@ -123,6 +124,14 @@ class UnivapayClient
     }
 
     /**
+     * @see Resources\Resource::getBridge() -- same convenience accessor, this class's own way.
+     */
+    protected function getBridge(): Bridge
+    {
+        return $this->bridge;
+    }
+
+    /**
      * Escape hatch for migrating call sites off the compat layer onto the native, generated SDK.
      *
      * Compat cannot be swapped for the native, generated SDK in one pass (`Money` value objects,
@@ -162,6 +171,11 @@ class UnivapayClient
 
     public function getMe()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getMe()',
+            'MerchantsApi::getCurrentMerchant()'
+        );
         $merchants = $this->bridge->merchants();
         $result = $this->bridge->caller()->callTyped(
             function () use ($merchants) {
@@ -181,6 +195,11 @@ class UnivapayClient
      */
     public function getCheckoutInfo()
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getCheckoutInfo()',
+            'CheckoutApi::getCheckoutInfo()'
+        );
         $this->bridge->requireStoreId();
         $checkout = $this->bridge->checkout();
         $result = $this->bridge->caller()->callTyped(
@@ -195,6 +214,11 @@ class UnivapayClient
 
     public function getStore($id)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getStore()',
+            'StoresApi::getStore()'
+        );
         $stores = $this->bridge->stores();
         $result = $this->bridge->caller()->callTyped(
             function () use ($stores, $id) {
@@ -215,6 +239,11 @@ class UnivapayClient
      */
     public function getBankAccount($id)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getBankAccount()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('UnivapayClient::getBankAccount() (Bank Accounts)');
     }
 
@@ -224,6 +253,11 @@ class UnivapayClient
      */
     public function createToken(PaymentMethod $payment, $localCustomerId = null)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::createToken()',
+            'TransactionTokensApi::createTransactionToken()'
+        );
         $storeId = $this->bridge->requireStoreId();
 
         if (isset($localCustomerId) && $payment->type === TokenType::RECURRING()) {
@@ -252,6 +286,11 @@ class UnivapayClient
      */
     public function getTransactionToken($transactionTokenId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getTransactionToken()',
+            'TransactionTokensApi::getTransactionToken()'
+        );
         $storeId = $this->bridge->requireStoreId();
         $tokens = $this->bridge->tokens();
         $result = $this->bridge->caller()->callTyped(
@@ -280,6 +319,11 @@ class UnivapayClient
         ?Redirect $redirect = null,
         ?PaymentThreeDS $paymentThreeDS = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::createCharge()',
+            'ChargesApi::createCharge()'
+        );
         return $this
             ->getTransactionToken($transactionTokenId)
             ->createCharge(
@@ -299,6 +343,11 @@ class UnivapayClient
      */
     public function getCharge($storeId, $chargeId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getCharge()',
+            'ChargesApi::getCharge()'
+        );
         $charges = $this->bridge->charges();
         $result = $this->bridge->caller()->callTyped(
             function () use ($charges, $storeId, $chargeId) {
@@ -316,6 +365,11 @@ class UnivapayClient
      */
     public function getLatestChargeForSubscription($storeId, $subscriptionId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getLatestChargeForSubscription()',
+            'SubscriptionsApi::getSubscriptionLatestCharge()'
+        );
         $subscriptions = $this->bridge->subscriptions();
         $result = $this->bridge->caller()->callTyped(
             function () use ($subscriptions, $storeId, $subscriptionId) {
@@ -342,6 +396,11 @@ class UnivapayClient
         ?array $metadata = null,
         ?PaymentThreeDS $paymentThreeDS = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::createSubscription()',
+            'SubscriptionsApi::createSubscription()'
+        );
         return $this
             ->getTransactionToken($transactionTokenId)
             ->createSubscription(
@@ -366,6 +425,11 @@ class UnivapayClient
      */
     public function getSubscription($storeId, $subscriptionId)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getSubscription()',
+            'SubscriptionsApi::getSubscription()'
+        );
         $subscriptions = $this->bridge->subscriptions();
         $result = $this->bridge->caller()->callTyped(
             function () use ($subscriptions, $storeId, $subscriptionId) {
@@ -397,6 +461,11 @@ class UnivapayClient
         ?SubscriptionPlan $subscriptionPlan = null,
         ?InstallmentPlan $installmentPlan = null
     ) {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::createSubscriptionSimulation()',
+            'SubscriptionsApi::simulateStoreSubscriptionPlan()'
+        );
         $storeId = $this->bridge->requireStoreId();
         $request = RequestModelFactory::subscriptionSimulationCreate(
             $paymentType,
@@ -431,6 +500,11 @@ class UnivapayClient
      */
     public function getTransfer($id)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::getTransfer()',
+            "no native equivalent (see the compat README's supported surface matrix)"
+        );
         throw new UnivapayUnsupportedFeatureError('UnivapayClient::getTransfer() (Transfers)');
     }
 
@@ -490,6 +564,11 @@ class UnivapayClient
      */
     public function parseWebhookData(array $data)
     {
+        $deprecationNotice = DeprecationNotifier::notify(
+            $this->getBridge()->deprecationNoticesEnabled(),
+            'Univapay\Compat\UnivapayClient::parseWebhookData()',
+            'typed webhook handler classes (e.g. ChargeWebhookEvent::fromJson())'
+        );
         try {
             $event = WebhookEvent::fromValue($data['event']);
             $parser = null;
@@ -557,6 +636,30 @@ class UnivapayClient
 
     // --- GetCharges/GetStores/GetSubscriptions/GetTransactions/GetTransactionTokens mixin hooks
     //     (GetBankAccounts/GetTransfers both throw unconditionally, no hook needed) -------------
+
+    /**
+     * @see Resources\Mixins\GetCharges::nativeListChargesEquivalent()
+     */
+    protected function nativeListChargesEquivalent(): string
+    {
+        return 'ChargesApi::listAllCharges()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetSubscriptions::nativeListSubscriptionsEquivalent()
+     */
+    protected function nativeListSubscriptionsEquivalent(): string
+    {
+        return 'SubscriptionsApi::listAllSubscriptions()';
+    }
+
+    /**
+     * @see Resources\Mixins\GetTransactions::nativeListTransactionsEquivalent()
+     */
+    protected function nativeListTransactionsEquivalent(): string
+    {
+        return 'TransactionHistoryApi::listTransactionHistory()';
+    }
 
     protected function listChargesPage(array $query)
     {

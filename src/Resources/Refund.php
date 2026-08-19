@@ -147,6 +147,21 @@ class Refund extends Resource
         return [(string) RefundStatus::PENDING() => array_diff(RefundStatus::findValues(), [RefundStatus::PENDING()])];
     }
 
+    protected function nativeFetchEquivalent(): string
+    {
+        return 'RefundsApi::getRefund()';
+    }
+
+    protected function nativeUpdateEquivalent(): string
+    {
+        return 'RefundsApi::updateRefund()';
+    }
+
+    protected function nativePollEquivalent(): string
+    {
+        return 'RefundsApi::pollRefund()';
+    }
+
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
