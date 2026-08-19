@@ -91,6 +91,7 @@ compat は旧 SDK の挙動をバイト単位でそのまま再現したもの�
 | `listTransactions()` | `$from`/`$to` に対して null セーフです —— どちらか一方を省略しても（例: ステータスのみで絞り込む場合）致命的エラーになりません。 |
 | カードトークンのハイドレーション | `billing`/`three_ds` は nullable です —— ワイヤー上に存在しない場合は `TypeError` ではなく `null` になります。 |
 | CVV認証ステータス | バックエンドの `error` ステータス値に対応する `CvvAuthorizationStatus::ERROR()` が存在します。 |
+| プランタイプ | 旧SDKの列挙に存在しなかったバックエンドの plan_type 値に対応する `InstallmentPlanType::FIXED_CYCLE_AMOUNT()` と `SubscriptionPlanType::REVOLVING()` が存在します（旧SDKでは `OutOfRangeException` で致命的エラーになっていました）。 |
 | `CheckoutInfo` | `supportedCurrencies` は nullable です —— サーバーが省略した場合は致命的エラーではなく `null` になります。 |
 | 銀行振込の issuer token | `call_method` はオプション扱いです —— ペイロードに存在しない場合は `null` になります（他の決済方法には影響しません）。 |
 | Paidyトークン | `phone_number` は `{country_code, local_number}` というネスト構造ではなく、単純な文字列としてハイドレートされます。 |

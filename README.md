@@ -87,6 +87,7 @@ differences exist.
 | `listTransactions()` | Null-safe on `$from`/`$to` — omitting either (e.g. to filter by status alone) no longer fatals. |
 | Card token hydration | `billing`/`three_ds` are nullable — absent on the wire yields `null`, not a `TypeError`. |
 | CVV authorization status | `CvvAuthorizationStatus::ERROR()` exists for the backend's `error` status value. |
+| Plan types | `InstallmentPlanType::FIXED_CYCLE_AMOUNT()` and `SubscriptionPlanType::REVOLVING()` exist for backend plan_type values the old lookups lacked (each fataled with `OutOfRangeException`). |
 | `CheckoutInfo` | `supportedCurrencies` is nullable — `null` when the server omits it, not a fatal. |
 | Bank-transfer issuer token | `call_method` is optional — `null` when the payload omits it (other payment types are unaffected). |
 | Paidy token | `phone_number` hydrates as a plain string, not the nested `{country_code, local_number}` shape. |

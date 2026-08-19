@@ -35,7 +35,7 @@ info:
       ### Token Types
       * **Store Token**: Grants full access to requests for that specific store.
       * **Merchant Token**: Can't create transaction tokens but can access data from multiple stores.
-  version: 1.1.0
+  version: 1.2.0
   # APIMatic-specific server configuration. This extension OVERRIDES the root
   # `servers:` block for APIMatic only (portal + SDK codegen), and it is the sole
   # way to express more than one base URL inside a single environment: a plain
@@ -52,7 +52,7 @@ info:
     default-server: default
     environments:
       - name: production
-        description: Staging Server
+        description: Production Server
         servers:
           # Both declaration forms are required, and neither alone validates:
           # each server needs its own `variables` map (it is checked as a standard
@@ -65,14 +65,14 @@ info:
           # of the two. Expected: sharing one parameter would make both URLs identical.
           - name: default
             url: "{baseUrl}"
-            description: Staging Server
+            description: Production Server
             variables:
               baseUrl:
                 default: https://api.univapay.com
                 description: Base URL for the API
           - name: directDebit
             url: "{directDebitBaseUrl}"
-            description: Direct Debit - Staging Server
+            description: Direct Debit - Production Server
             variables:
               directDebitBaseUrl:
                 default: https://direct-debit.gopay-services.com
@@ -92,13 +92,13 @@ servers:
   # Defaults to Staging locally and on non-master builds; CI swaps these entries to
   # Production on master builds, see deploy.yml.
   - url: "{baseUrl}"
-    description: Staging Server
+    description: Production Server
     variables:
       baseUrl:
         default: https://api.univapay.com
         description: Base URL for the API
   - url: "{directDebitBaseUrl}"
-    description: Direct Debit - Staging Server
+    description: Direct Debit - Production Server
     variables:
       directDebitBaseUrl:
         default: https://direct-debit.gopay-services.com
@@ -3461,10 +3461,57 @@ components:
           format: date-time
           example: "2024-06-26T01:51:28.627023Z"
           description: Timestamp when the resource was created.
+        three_ds:
+          $ref: "#/components/schemas/SubscriptionThreeDs"
         period:
           $ref: "#/components/schemas/SubscriptionPeriod"
+        cyclical_period:
+          type: string
+          nullable: true
+          example:
+          description: >-
+            ISO-8601 Duration for a custom billing frequency (e.g., P3D,
+            P1M), returned instead of `period` when the subscription uses a
+            custom cycle length rather than one of the fixed period presets.
+            Mutually exclusive with `period` — exactly one of the two is
+            present.
         next_payment:
           $ref: "#/components/schemas/SubscriptionNextPayment"
+        cycles_left:
+          type: integer
+          minimum: 0
+          nullable: true
+          example:
+          description: >-
+            Number of remaining billing cycles before the subscription
+            completes. Only present for cycle-limited plans
+            (`subscription_plan` or `installment_plan`); `null` for
+            indefinite subscriptions.
+        subscription_plan:
+          $ref: "#/components/schemas/SubscriptionPlanSettings"
+        installment_plan:
+          $ref: "#/components/schemas/SubscriptionInstallmentPlanResponse"
+        charge_id:
+          type: string
+          format: uuid
+          nullable: true
+          example:
+          description: >-
+            Identifier of the charge associated with the subscription's
+            installment plan. Only present when `installment_plan` is set.
+        amount_left:
+          type: integer
+          minimum: 0
+          nullable: true
+          example:
+          description: >-
+            Remaining amount to be charged over the life of the plan, in the
+            smallest currency unit. Only present for cycle-limited plans.
+        amount_left_formatted:
+          type: number
+          nullable: true
+          example:
+          description: "`amount_left` formatted for display."
 
     SubscriptionCreateRequest:
       type: object
@@ -3793,6 +3840,100 @@ components:
           description: Total target amount for fixed_cycle_amount plan.
           example: 1000
       example: {}
+    SubscriptionInstallmentPlanResponse:
+      type: object
+      description: >-
+        Installment plan applied to the subscription, as returned by the
+        API. Covers both card-network installment plans (`revolving`,
+        `fixed_cycles`) and legacy fixed-amount installment plans
+        (`fixed_cycle_amount`).
+      properties:
+        plan_type:
+          type: string
+          title: CombinedPlanType
+          enum: [revolving, fixed_cycles, fixed_cycle_amount]
+          example: fixed_cycles
+          description: Plan type selector.
+        fixed_cycles:
+          type: integer
+          nullable: true
+          title: CombinedInstallmentFixedCycles
+          enum: [3, 5, 6, 10, 12, 15, 18, 20, 24]
+          example: 3
+          description: >-
+            Number of installment cycles. Present when plan_type is
+            fixed_cycles.
+          x-enum-elements:
+            - value: 3
+              name: CYCLES_3
+              description: 3 cycles
+            - value: 5
+              name: CYCLES_5
+              description: 5 cycles
+            - value: 6
+              name: CYCLES_6
+              description: 6 cycles
+            - value: 10
+              name: CYCLES_10
+              description: 10 cycles
+            - value: 12
+              name: CYCLES_12
+              description: 12 cycles
+            - value: 15
+              name: CYCLES_15
+              description: 15 cycles
+            - value: 18
+              name: CYCLES_18
+              description: 18 cycles
+            - value: 20
+              name: CYCLES_20
+              description: 20 cycles
+            - value: 24
+              name: CYCLES_24
+              description: 24 cycles
+        fixed_cycles_amount:
+          type: integer
+          nullable: true
+          example:
+          description: >-
+            Total target amount for the fixed_cycle_amount plan type, in
+            the smallest currency unit. Present when plan_type is
+            fixed_cycle_amount. Note the plural `fixed_cycles_amount` key
+            differs from `subscription_plan`'s singular
+            `fixed_cycle_amount`.
+      example: {}
+    SubscriptionThreeDs:
+      type: object
+      description: >-
+        3-D Secure configuration and redirect details applied to the
+        subscription's payments.
+      properties:
+        mode:
+          $ref: "#/components/schemas/SubscriptionThreeDsMode"
+        redirect_endpoint:
+          type: string
+          format: uri
+          nullable: true
+          example:
+          description: URL the customer is redirected to for 3-D Secure authentication.
+        redirect_id:
+          type: string
+          format: uuid
+          nullable: true
+          example:
+          description: Identifier of the 3-D Secure redirect.
+      example: {}
+    SubscriptionThreeDsMode:
+      type: string
+      enum: [normal, require, force, skip, if_available, provided]
+      nullable: true
+      example: normal
+      description: >-
+        3-D Secure authentication mode applied to the subscription's
+        payments. `if_available` enforces 3DS only if credentials are
+        available for the recurring token and it has not already completed
+        3DS. `provided` indicates externally supplied MPI authentication
+        data was used.
     SubscriptionListItem:
       allOf:
         - $ref: "#/components/schemas/Subscription"
@@ -3830,6 +3971,13 @@ components:
         currency: "USD"
         amount_formatted: 12.50
         status: "current"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
+        subscription_plan:
+          plan_type: fixed_cycles
+          fixed_cycles: 12
         merchant_name: "管理画面ガイド"
         store_name: "管理画面ガイド_TEST店舗"
         payment_type: "card"
@@ -3891,6 +4039,13 @@ components:
               currency: USD
               amount_formatted: 12.5
               status: current
+              three_ds:
+                mode: normal
+                redirect_endpoint:
+                redirect_id:
+              subscription_plan:
+                plan_type: fixed_cycles
+                fixed_cycles: 12
               merchant_name: 管理画面ガイド
               store_name: 管理画面ガイド_TEST店舗
               payment_type: card
@@ -3907,6 +4062,14 @@ components:
               currency: JPY
               amount_formatted: 3000
               status: current
+              three_ds:
+                mode: normal
+                redirect_endpoint:
+                redirect_id:
+              installment_plan:
+                plan_type: fixed_cycle_amount
+                fixed_cycles:
+                fixed_cycles_amount: 30000
               merchant_name: 管理画面ガイド
               store_name: 管理画面ガイド_Online店舗
               payment_type: card
@@ -5836,7 +5999,7 @@ components:
         default_mode: live
     MerchantWebhookConfiguration:
       type: object
-      description: Merchant configuration object serialized by gyron-payments-api.
+      description: Merchant configuration object serialized by the backend API.
       properties:
         percent_fee:
           type: number
@@ -6062,7 +6225,7 @@ components:
     MerchantConfiguration:
       allOf:
         - $ref: "#/components/schemas/MerchantWebhookConfiguration"
-      description: Merchant configuration snapshot serialized by gyron-payments-api.
+      description: Merchant configuration snapshot serialized by the backend API.
       example:
         percent_fee: 3.6
         country: JP
@@ -6136,7 +6299,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/MerchantWebhookConfiguration"
       description: >-
-        Store-scoped configuration snapshot serialized by gyron-payments-api. It
+        Store-scoped configuration snapshot serialized by the backend API. It
         uses the same flattened serializer as merchant configuration, but omits
         `transfer_schedule`.
       example:
@@ -9607,6 +9770,10 @@ components:
           order_id: ORD-987
         mode: live
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: monthly
         next_payment:
           id: "11ef3360-1f9a-c54a-8313-7f9847da313b"
@@ -9629,10 +9796,17 @@ components:
             status: "current"
             mode: "live"
             created_on: "2024-06-26T01:51:28.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
               termination_mode: immediate
+            subscription_plan:
+              plan_type: fixed_cycles
+              fixed_cycles: 12
             merchant_name: "管理画面ガイド"
             store_name: "管理画面ガイド_TEST店舗"
             payment_type: "card"
@@ -9651,10 +9825,18 @@ components:
             status: "current"
             mode: "live"
             created_on: "2024-07-11T09:20:00.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
               termination_mode: immediate
+            installment_plan:
+              plan_type: fixed_cycle_amount
+              fixed_cycles:
+              fixed_cycles_amount: 30000
             merchant_name: "管理画面ガイド"
             store_name: "管理画面ガイド_Online店舗"
             payment_type: "card"
@@ -9673,10 +9855,18 @@ components:
             status: "suspended"
             mode: "live"
             created_on: "2024-08-15T13:05:22.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
               termination_mode: on_next_payment
+            installment_plan:
+              plan_type: revolving
+              fixed_cycles:
+              fixed_cycles_amount:
             merchant_name: "管理画面ガイド"
             store_name: "管理画面ガイド_Osaka店舗"
             payment_type: "card"
@@ -9915,10 +10105,17 @@ components:
             status: "current"
             mode: "live"
             created_on: "2024-06-26T01:51:28.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
               termination_mode: immediate
+            subscription_plan:
+              plan_type: fixed_cycles
+              fixed_cycles: 12
             merchant_name: "管理画面ガイド"
             store_name: "管理画面ガイド_TEST店舗"
             payment_type: "card"
@@ -9937,6 +10134,10 @@ components:
             status: "current"
             mode: "live"
             created_on: "2024-07-01T10:00:00.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
@@ -9959,10 +10160,18 @@ components:
             status: "suspended"
             mode: "live"
             created_on: "2024-08-15T13:05:22.627023Z"
+            three_ds:
+              mode: normal
+              redirect_endpoint:
+              redirect_id:
             schedule_settings:
               zone_id: Asia/Tokyo
               retry_interval: P7D
               termination_mode: on_next_payment
+            installment_plan:
+              plan_type: revolving
+              fixed_cycles:
+              fixed_cycles_amount:
             merchant_name: "管理画面ガイド"
             store_name: "管理画面ガイド_TEST店舗"
             payment_type: "card"
@@ -10000,6 +10209,10 @@ components:
           order_id: "12345"
         mode: "test"
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: "monthly"
         next_payment:
           id: "11ef335e-9ae2-8322-8e79-e7ba4b56234e"
@@ -10013,6 +10226,12 @@ components:
           created_on: "2024-06-26T01:51:29.025129Z"
           updated_on: "2024-06-26T01:51:29.025129Z"
           retry_date:
+        cycles_left: 5
+        subscription_plan:
+          plan_type: "fixed_cycles"
+          fixed_cycles: 12
+        amount_left: 6250
+        amount_left_formatted: 62.50
     UpdateSubscriptionResponseExample:
       summary: Successful Subscription Update
       value:
@@ -10039,6 +10258,10 @@ components:
           order_id: "12345"
         mode: "test"
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: "monthly"
         next_payment:
           id: "11ef335e-9ae2-8322-8e79-e7ba4b56234e"
@@ -10225,6 +10448,10 @@ components:
         status: "suspended"
         mode: "test"
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: "monthly"
     UnsuspendSubscriptionResponseExample:
       summary: Subscription Resumed
@@ -10244,6 +10471,10 @@ components:
         status: "unpaid"
         mode: "test"
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: "monthly"
     UpdateSubscriptionTokenResponseExample:
       summary: Token Updated
@@ -10263,6 +10494,10 @@ components:
         status: "current"
         mode: "test"
         created_on: "2024-06-26T01:51:28.627023Z"
+        three_ds:
+          mode: normal
+          redirect_endpoint:
+          redirect_id:
         period: "monthly"
     CreateRefundResponseExample:
       summary: Refund Created (Pending)
