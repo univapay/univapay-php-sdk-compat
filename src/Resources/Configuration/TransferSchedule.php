@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources\Configuration;
 
+use UnivaPay\Models\MerchantWebhookTransferScheduleConfiguration;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -33,5 +34,26 @@ class TransferSchedule
     protected static function initSchema()
     {
         return JsonSchema::fromClass(self::class);
+    }
+
+    /**
+     * Called directly by `Configuration::hydrateFromTyped()`. Clean 1:1 match against the
+     * generated `UnivaPay\Models\MerchantWebhookTransferScheduleConfiguration`.
+     *
+     * @param mixed $typed
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed)
+    {
+        if (!($typed instanceof MerchantWebhookTransferScheduleConfiguration)) {
+            return null;
+        }
+        return new self(
+            $typed->getWaitPeriod(),
+            $typed->getPeriod(),
+            $typed->getDayOfWeek(),
+            $typed->getWeekOfMonth(),
+            $typed->getDayOfMonth()
+        );
     }
 }

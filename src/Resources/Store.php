@@ -6,12 +6,15 @@ namespace Univapay\Compat\Resources;
 
 use DateTime;
 use UnivaPay\Models\CreateCustomerIdRequest;
+use UnivaPay\Models\Store as GeneratedStore;
 use Univapay\Compat\Errors\UnivapayUnsupportedFeatureError;
 use Univapay\Compat\Resources\Configuration\Configuration;
 use Univapay\Compat\Resources\Mixins\GetCharges;
 use Univapay\Compat\Resources\Mixins\GetSubscriptions;
 use Univapay\Compat\Resources\Mixins\GetTransactions;
 use Univapay\Compat\Support\ListDispatcher;
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -82,13 +85,47 @@ class Store extends Resource
             ->upsert('created_on', true, FormatterUtils::of('getDateTime'));
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. Clean 1:1 match against the
+     * generated SDK's `UnivaPay\Models\Store` -- `configuration` is dispatched to `Configuration::
+     * hydrateFromTyped()` (see its own doc for the nested `Configuration\*` tree audit). Unlike
+     * `Merchant`, `configuration` is OPTIONAL here (required=false in this class's own schema):
+     * missing/unmappable resolves to null instead of declining the whole `Store`.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedStore)) {
+            return null;
+        }
+        $createdOn = $typed->getCreatedOn();
+        if ($createdOn === null) {
+            return null;
+        }
+
+        $configurationTyped = $typed->getConfiguration();
+        $configuration = null;
+        if ($configurationTyped !== null) {
+            $configurationBody = isset($body['configuration']) && is_array($body['configuration'])
+                ? $body['configuration']
+                : [];
+            $configuration = Configuration::hydrateFromTyped($configurationTyped, $configurationBody);
+        }
+
+        return new self($typed->getId(), $typed->getName(), $createdOn, $configuration, $context);
+    }
+
     // --- Resource wiring (fetch/update) ----------------------------------------------------------
 
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
         $stores = $bridge->stores();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($stores) {
                 return $stores->getStore($this->id);
             },
@@ -109,28 +146,28 @@ class Store extends Resource
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($charges, $chargeId) {
                 return $charges->getCharge($this->id, $chargeId);
             },
             $bridge->handlers(),
             "GET /stores/{$this->id}/charges/$chargeId"
         );
-        return Charge::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(Charge::class, $result, $this->context);
     }
 
     public function getSubscription($subscriptionId)
     {
         $bridge = $this->context->bridge();
         $subscriptions = $bridge->subscriptions();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($subscriptions, $subscriptionId) {
                 return $subscriptions->getSubscription($this->id, $subscriptionId);
             },
             $bridge->handlers(),
             "GET /stores/{$this->id}/subscriptions/$subscriptionId"
         );
-        return Subscription::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(Subscription::class, $result, $this->context);
     }
 
     /**
@@ -166,8 +203,8 @@ class Store extends Resource
             $bridge,
             $this->id,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Charge::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }

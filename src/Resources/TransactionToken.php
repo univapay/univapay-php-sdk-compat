@@ -5,7 +5,14 @@ namespace Univapay\Compat\Resources;
 use DateInterval;
 use DateTime;
 use Money\Money;
+use UnivaPay\Models\BankTransferTransactionToken;
+use UnivaPay\Models\CardTransactionToken;
 use UnivaPay\Models\EnableTokenThreeDsRequest;
+use UnivaPay\Models\KonbiniTransactionToken;
+use UnivaPay\Models\OnlineTransactionToken;
+use UnivaPay\Models\PaidyTransactionToken;
+use UnivaPay\Models\QrMerchantTransactionToken;
+use UnivaPay\Models\QrScanTransactionToken;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\CvvAuthorizationStatus;
 use Univapay\Compat\Enums\Field;
@@ -29,6 +36,7 @@ use Univapay\Compat\Resources\Subscription\InstallmentPlan;
 use Univapay\Compat\Resources\Subscription\ScheduleSettings;
 use Univapay\Compat\Resources\Subscription\SubscriptionPlan;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -176,13 +184,176 @@ class TransactionToken extends Resource
             });
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. The generated SDK models
+     * this response as a 7-way discriminated union on `payment_type`
+     * (`Card`/`Konbini`/`Online`/`BankTransfer`/`Paidy`/`QrScan`/`QrMerchant` TransactionToken --
+     * see docs/ARCHITECTURE.md) -- none of the 7 concrete classes share a common parent/interface,
+     * so `$typed` is narrowed via `instanceof` against all 7. Every one of them exposes the SAME
+     * base-field getters (id/storeId/email/active/mode/type/usageLimit/confirmed/createdOn/
+     * updatedOn/lastUsedOn) despite having no shared type to declare that on, so
+     * `baseArgsFromTyped()` below calls them via plain duck typing.
+     *
+     * `metadata` is read from $body (this response's raw decoded body), not the typed
+     * `getMetadata()` -- same GenericMetadata-is-always-raw treatment as `Charge`/`Refund`/
+     * `Cancel`. `ip_address` is also patched from $body -- a genuine spec gap: none of the 7
+     * generated variants (nor a shared base) carry it at all, despite this class's own
+     * `initSchema()` reading it (auto-derived from the declared property, optional, identity
+     * formatter). `data` is dispatched to the matching `PaymentData\*::hydrateFromTyped()` for 6 of
+     * the 7 variants; `bank_transfer` has no compat `PaymentData\*` class at all (a PRE-EXISTING
+     * raw-path gap -- this class's own `initSchema()`'s `data` switch has no `BANK_TRANSFER` case
+     * either, so raw hydration already always nulls `data` for that variant; typed hydration
+     * matches it exactly, not a new gap).
+     *
+     * Declines (null) when a required base field is missing, or when the payment-type-specific
+     * `PaymentData\*::hydrateFromTyped()` call declines -- both fall back to the raw path, which
+     * throws/behaves identically for the same malformed response.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        $baseArgs = self::baseArgsFromTyped($typed);
+        if ($baseArgs === null) {
+            return null;
+        }
+        list($id, $storeId, $email, $active, $mode, $type, $confirmed, $createdOn, $usageLimit, $lastUsedOn)
+            = $baseArgs;
+
+        $paymentTypeValue = $typed->getPaymentType();
+        if ($paymentTypeValue === null) {
+            return null;
+        }
+        $paymentType = PaymentType::fromValue($paymentTypeValue);
+
+        // 'data' is optional at THIS class's own top level (initSchema()'s 'data' upsert is
+        // required=false -- see its own comment: absent when hydrated from a list, fixed by a
+        // later fetch()), but every generated variant's getData() has a NON-nullable return type.
+        // If the wire genuinely has no 'data' at all, the property is never set and calling
+        // getData() throws a TypeError -- caught here and treated as "no typed data", matching the
+        // raw path's graceful null instead of forcing the whole token through the raw fallback.
+        try {
+            $typedData = $typed->getData();
+        } catch (\TypeError $e) {
+            $typedData = null;
+        }
+
+        $dataBody = isset($body['data']) && is_array($body['data']) ? $body['data'] : [];
+        if ($typedData === null && !array_key_exists('data', $body)) {
+            $data = null;
+        } else {
+            $data = self::dataFromTyped($paymentType, $typedData, $dataBody);
+            if ($data === self::DATA_UNMAPPABLE) {
+                return null;
+            }
+        }
+
+        $metadata = array_key_exists('metadata', $body) ? $body['metadata'] : null;
+        // Spec gap: the generated model has no ip_address field at all (none of the 7 variants,
+        // nor TransactionTokenBase, declare it) despite this class's own auto-derived schema
+        // reading it (identity, optional) like every other undeclared-in-initSchema() property.
+        $ipAddress = array_key_exists('ip_address', $body) ? $body['ip_address'] : null;
+
+        return new self(
+            $id,
+            $storeId,
+            $email,
+            $active,
+            $paymentType,
+            $mode,
+            $type,
+            $confirmed,
+            $createdOn,
+            $data,
+            $metadata,
+            $usageLimit,
+            $lastUsedOn,
+            $ipAddress,
+            $context
+        );
+    }
+
+    /** Sentinel: the payment-type-specific data mapping declined -- distinct from a real `null` data. */
+    private const DATA_UNMAPPABLE = "\0unmappable\0";
+
+    /**
+     * @param mixed $typed One of the 7 union classes -- duck-typed, see hydrateFromTyped()'s doc.
+     * @return array|null [id, storeId, email, active, mode, type, confirmed, createdOn, usageLimit,
+     *         lastUsedOn], or null if `mode`/`type`/`created_on` (required=true in this class's own
+     *         schema) is missing.
+     */
+    private static function baseArgsFromTyped($typed)
+    {
+        $mode = $typed->getMode();
+        $type = $typed->getType();
+        $createdOn = $typed->getCreatedOn();
+        if ($mode === null || $type === null || $createdOn === null) {
+            return null;
+        }
+        return [
+            $typed->getId(),
+            $typed->getStoreId(),
+            $typed->getEmail(),
+            $typed->getActive(),
+            AppTokenMode::fromValue($mode),
+            TokenType::fromValue($type),
+            $typed->getConfirmed(),
+            $createdOn,
+            UsageLimit::fromValue($typed->getUsageLimit()),
+            $typed->getLastUsedOn(),
+        ];
+    }
+
+    /**
+     * @param PaymentType $paymentType
+     * @param mixed $typedData The union variant's own `getData()` result.
+     * @param array $dataBody Raw `data` sub-object, for the one or two fields a variant's typed
+     *        data model can't carry (see each `PaymentData\*::hydrateFromTyped()`'s own doc).
+     * @return mixed A hydrated `PaymentData\*` instance, null (the `bank_transfer` no-compat-class
+     *         case -- a real, intentional null, matching the raw path exactly), or
+     *         `self::DATA_UNMAPPABLE` if the variant-specific hydration declined.
+     */
+    private static function dataFromTyped(PaymentType $paymentType, $typedData, array $dataBody)
+    {
+        switch ($paymentType) {
+            case PaymentType::CARD():
+            case PaymentType::APPLE_PAY():
+                $data = CardData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            case PaymentType::KONBINI():
+                $data = ConvenienceStoreData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            case PaymentType::QR_SCAN():
+                $data = QrScanData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            case PaymentType::QR_MERCHANT():
+                $data = QrMerchantData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            case PaymentType::PAIDY():
+                $data = PaidyData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            case PaymentType::ONLINE():
+                $data = OnlineData::hydrateFromTyped($typedData, $dataBody);
+                break;
+            default:
+                // PaymentType::BANK_TRANSFER(), or any future value this switch (and the raw
+                // path's identical one in initSchema()) doesn't know yet -- matches the raw path's
+                // implicit-null fallthrough exactly.
+                return null;
+        }
+        return $data === null ? self::DATA_UNMAPPABLE : $data;
+    }
+
     // --- Resource wiring (fetch/update) --------------------------------------------------------
 
     protected function fetchCall()
     {
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($tokens) {
                 return $tokens->getTransactionToken($this->storeId, $this->id);
             },
@@ -199,7 +370,7 @@ class TransactionToken extends Resource
         $request = RequestModelFactory::tokenPatch($updates);
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function ($idempotencyKey) use ($tokens, $request) {
                 return $tokens->updateTransactionToken($this->storeId, $this->id, $idempotencyKey, $request);
             },
@@ -244,14 +415,14 @@ class TransactionToken extends Resource
     {
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($tokens) {
                 return $tokens->getTransactionToken($this->storeId, $this->id, true);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/tokens/{$this->id}?polling=true"
         );
-        return self::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($result);
     }
 
     /**
@@ -411,14 +582,14 @@ class TransactionToken extends Resource
             if ($redirectEndpoint !== null) {
                 $request->setRedirectEndpoint($redirectEndpoint);
             }
-            $body = $bridge->caller()->call(
+            $result = $bridge->caller()->callTyped(
                 function ($idempotencyKey) use ($tokens, $request) {
                     return $tokens->enableTokenThreeDs($this->storeId, $this->id, $idempotencyKey, $request);
                 },
                 $bridge->handlers(),
                 "POST /stores/{$this->storeId}/tokens/{$this->id}/three_ds"
             );
-            return self::getSchema()->parse($body, [$this->context]);
+            return $this->resolveHydration($result);
         }
 
         $bridge->caller()->call(
@@ -606,13 +777,13 @@ class TransactionToken extends Resource
     {
         $bridge = $this->context->bridge();
         $tokens = $bridge->tokens();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($tokens) {
                 return $tokens->getTokenThreeDsIssuerToken($this->storeId, $this->id);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/tokens/{$this->id}/three_ds/issuer_token"
         );
-        return ThreeDSIssuerToken::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(ThreeDSIssuerToken::class, $result, $this->context);
     }
 }

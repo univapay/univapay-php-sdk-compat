@@ -79,6 +79,20 @@ use Univapay\Compat\Requests\Handlers\RequestHandler;
  * `IdempotencyCallback::onAfterRequest` delegates to this class's `onAfterRequest`, which records
  * the raw body. Nothing about this class depends on `IdempotencyCallback` directly -- it is
  * simply "some `httpCallback` the generated client wraps," per its constructor.
+ *
+ * ## Typed-first hydration: `callTyped()`
+ *
+ * `call()` (below) only ever answers from the captured raw body -- the generated call's own typed
+ * result (`ApiResponse::getResult()`) is computed (every generated `Apis\*` method's response
+ * handler is built with `->type(SomeModel::class)`/`->typeGroup(...)`) but discarded. `callTyped()`
+ * captures that same result too, packaged into a `Support\TypedResult` alongside the identical raw
+ * body `call()` returns, so `Support\TypedHydrator::resolve()` can prefer the typed model and fall
+ * back to the raw body exactly as `call()` always has. Both methods share ONE implementation
+ * (`execute()`) -- `call()` is just `execute(...)->rawBody`, a mechanical unwrap that changes
+ * nothing about its existing behavior/tests. `execute()`'s typed jsonmapper failure path (this
+ * class doc's point 2) is identical for both: the only difference is `callTyped()` also reports
+ * `mapperFailed = true` on that path (`call()` never distinguished a mapper failure from any other
+ * bypassable throwable, and still doesn't).
  */
 final class ApiCaller
 {
@@ -173,6 +187,27 @@ final class ApiCaller
      */
     public function call(callable $controllerFn, array $handlers, string $urlHint)
     {
+        return $this->execute($controllerFn, $handlers, $urlHint)->rawBody;
+    }
+
+    /**
+     * Same contract as `call()` (see its own doc and this class's "Typed-first hydration" doc),
+     * but returns a `TypedResult` carrying both the raw decoded body AND the generated SDK's own
+     * typed result, instead of just the raw body.
+     *
+     * @param callable $controllerFn See `call()`.
+     * @param RequestHandler[] $handlers See `call()`.
+     * @param string $urlHint See `call()`.
+     * @return TypedResult
+     * @throws \Univapay\Compat\Errors\UnivapayError See `call()`.
+     */
+    public function callTyped(callable $controllerFn, array $handlers, string $urlHint): TypedResult
+    {
+        return $this->execute($controllerFn, $handlers, $urlHint);
+    }
+
+    private function execute(callable $controllerFn, array $handlers, string $urlHint): TypedResult
+    {
         $idempotencyKey = self::generateIdempotencyKey();
 
         $innermost = function (array $requestData) use ($controllerFn, $idempotencyKey, $urlHint) {
@@ -188,7 +223,7 @@ final class ApiCaller
                     throw $t;
                 }
                 if ($this->hasBypassableCapture()) {
-                    return $this->decodeCapturedBody();
+                    return new TypedResult($this->decodeCapturedBody(), null, true);
                 }
                 throw new UnivapayError(
                     "Unexpected error while handling the response for $urlHint: " . $t->getMessage(),
@@ -206,7 +241,8 @@ final class ApiCaller
                     $response->getRequest()->getQueryUrl()
                 );
             }
-            return $this->decodeCapturedBody();
+            $typed = $response instanceof ApiResponse ? $response->getResult() : null;
+            return new TypedResult($this->decodeCapturedBody(), $typed, false);
         };
 
         $encapsulated = self::encapsulate($handlers, $innermost);

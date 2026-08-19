@@ -47,6 +47,8 @@ use Univapay\Compat\Support\Bridge;
 use Univapay\Compat\Support\CompatContext;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 
 /**
  * Port of the old SDK's `UnivapayClient` -- the facade every consumer constructs directly
@@ -161,14 +163,14 @@ class UnivapayClient
     public function getMe()
     {
         $merchants = $this->bridge->merchants();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($merchants) {
                 return $merchants->getCurrentMerchant();
             },
             $this->bridge->handlers(),
             'GET /me'
         );
-        return Merchant::getSchema()->parse($body, [new CompatContext($this->bridge)]);
+        return TypedHydrator::resolve(Merchant::class, $result, new CompatContext($this->bridge));
     }
 
     /**
@@ -181,27 +183,27 @@ class UnivapayClient
     {
         $this->bridge->requireStoreId();
         $checkout = $this->bridge->checkout();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($checkout) {
                 return $checkout->getCheckoutInfo();
             },
             $this->bridge->handlers(),
             'GET /checkout_info'
         );
-        return CheckoutInfo::getSchema()->parse($body);
+        return TypedHydrator::resolve(CheckoutInfo::class, $result, null);
     }
 
     public function getStore($id)
     {
         $stores = $this->bridge->stores();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($stores, $id) {
                 return $stores->getStore($id);
             },
             $this->bridge->handlers(),
             "GET /stores/$id"
         );
-        return Store::getSchema()->parse($body, [new CompatContext($this->bridge, $id)]);
+        return TypedHydrator::resolve(Store::class, $result, new CompatContext($this->bridge, $id));
     }
 
     /**
@@ -235,14 +237,14 @@ class UnivapayClient
         // $localCustomerId is deliberately never forwarded here -- see class doc.
         $request = RequestModelFactory::tokenCreate($payment);
         $tokens = $this->bridge->tokens();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function ($idempotencyKey) use ($tokens, $request) {
                 return $tokens->createTransactionToken($request, $idempotencyKey);
             },
             $this->bridge->handlers(),
             'POST /tokens'
         );
-        return TransactionToken::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(TransactionToken::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -252,14 +254,14 @@ class UnivapayClient
     {
         $storeId = $this->bridge->requireStoreId();
         $tokens = $this->bridge->tokens();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($tokens, $storeId, $transactionTokenId) {
                 return $tokens->getTransactionToken($storeId, $transactionTokenId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/tokens/$transactionTokenId"
         );
-        return TransactionToken::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(TransactionToken::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -298,14 +300,14 @@ class UnivapayClient
     public function getCharge($storeId, $chargeId)
     {
         $charges = $this->bridge->charges();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($charges, $storeId, $chargeId) {
                 return $charges->getCharge($storeId, $chargeId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/charges/$chargeId"
         );
-        return Charge::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(Charge::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -315,14 +317,14 @@ class UnivapayClient
     public function getLatestChargeForSubscription($storeId, $subscriptionId)
     {
         $subscriptions = $this->bridge->subscriptions();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($subscriptions, $storeId, $subscriptionId) {
                 return $subscriptions->getSubscriptionLatestCharge($storeId, $subscriptionId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/subscriptions/$subscriptionId/charges/latest"
         );
-        return Charge::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(Charge::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -365,14 +367,14 @@ class UnivapayClient
     public function getSubscription($storeId, $subscriptionId)
     {
         $subscriptions = $this->bridge->subscriptions();
-        $body = $this->bridge->caller()->call(
+        $result = $this->bridge->caller()->callTyped(
             function () use ($subscriptions, $storeId, $subscriptionId) {
                 return $subscriptions->getSubscription($storeId, $subscriptionId);
             },
             $this->bridge->handlers(),
             "GET /stores/$storeId/subscriptions/$subscriptionId"
         );
-        return Subscription::getSchema()->parse($body, [new CompatContext($this->bridge, $storeId)]);
+        return TypedHydrator::resolve(Subscription::class, $result, new CompatContext($this->bridge, $storeId));
     }
 
     /**
@@ -561,8 +563,9 @@ class UnivapayClient
         return ListDispatcher::listAllCharges(
             $this->bridge,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [new CompatContext($this->bridge)]);
+            function ($raw, $typed = null) {
+                $result = new TypedResult($raw, $typed, false);
+                return TypedHydrator::resolve(Charge::class, $result, new CompatContext($this->bridge));
             }
         );
     }

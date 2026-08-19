@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources;
 
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
+
 /**
  * Port of the old SDK's `Resources\Resource` base class. Old `fetch()`/`update()` built a
  * `Requests\RequestContext` by hand and issued a raw GET/PATCH through `Utility\RequesterUtils`
@@ -18,6 +21,17 @@ namespace Univapay\Compat\Resources;
  * Every concrete subclass is expected to `use Jsonable;` itself (exactly as in the old SDK, where
  * `Resource` did not use the trait but every resource extending it did) so that `static::
  * getSchema()` below resolves.
+ *
+ * ## Typed-first hydration
+ *
+ * `fetchCall()`/`updateCall()` may return either the old contract (`array|true`, the raw decoded
+ * body) or a `Support\TypedResult` (raw body + the generated SDK's typed result together, from
+ * `Support\ApiCaller::callTyped()`). `fetch()`/`update()` below detect which one they got and
+ * route a `TypedResult` through `Support\TypedHydrator::resolve()`; a plain raw body is parsed
+ * exactly as before. A resource that hasn't been migrated to `callTyped()` needs no change at all.
+ * `callAndHydrate()` always uses `callTyped()`/`resolve()` -- behavior-neutral for any
+ * `$targetClass` that has no `hydrateFromTyped()` yet (resolves to the same
+ * `getSchema()->parse($rawBody, [$context])` call it always made).
  */
 abstract class Resource
 {
@@ -59,8 +73,7 @@ abstract class Resource
      */
     public function fetch()
     {
-        $body = $this->fetchCall();
-        return static::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($this->fetchCall());
     }
 
     /**
@@ -69,8 +82,20 @@ abstract class Resource
      */
     public function update($updates)
     {
-        $body = $this->updateCall($updates);
-        return static::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($this->updateCall($updates));
+    }
+
+    /**
+     * @param array|true|TypedResult $result Whatever `fetchCall()`/`updateCall()` returned -- see
+     *        class doc "Typed-first hydration".
+     * @return static
+     */
+    protected function resolveHydration($result)
+    {
+        if ($result instanceof TypedResult) {
+            return TypedHydrator::resolve(static::class, $result, $this->context);
+        }
+        return static::getSchema()->parse($result, [$this->context]);
     }
 
     /**
@@ -103,10 +128,11 @@ abstract class Resource
         $hydrationContext = null
     ) {
         $bridge = $this->context->bridge();
-        $body = $bridge->caller()->call($controllerFn, $bridge->handlers(), $urlHint);
-        return $targetClass::getSchema()->parse(
-            $body,
-            [$hydrationContext !== null ? $hydrationContext : $this->context]
+        $result = $bridge->caller()->callTyped($controllerFn, $bridge->handlers(), $urlHint);
+        return TypedHydrator::resolve(
+            $targetClass,
+            $result,
+            $hydrationContext !== null ? $hydrationContext : $this->context
         );
     }
 }

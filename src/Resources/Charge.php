@@ -5,6 +5,7 @@ namespace Univapay\Compat\Resources;
 use DateTime;
 use Money\Currency;
 use Money\Money;
+use UnivaPay\Models\Charge as GeneratedCharge;
 use Univapay\Compat\Enums\AppTokenMode;
 use Univapay\Compat\Enums\ChargeStatus;
 use Univapay\Compat\Enums\RefundReason;
@@ -16,6 +17,8 @@ use Univapay\Compat\Resources\PaymentToken\OnlineToken;
 use Univapay\Compat\Resources\PaymentToken\ThreeDSIssuerToken;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\FormatterUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
@@ -152,6 +155,99 @@ class Charge extends Resource
             ->upsert('three_ds', false, PaymentThreeDS::getSchema()->getParser());
     }
 
+    /**
+     * Typed-first hydration entry point for `Support\TypedHydrator`. Builds a `Charge` from the
+     * generated SDK's own `UnivaPay\Models\Charge`, applying the same Money/TypedEnum/DateTime
+     * conversions `initSchema()`'s formatters apply on the raw path -- `getRequestedCurrency()`/
+     * `getCreatedOn()`/etc. are already the right shape (a currency code string, a real
+     * `\DateTime`), so this is a direct getter-to-constructor-arg mapping for every field except:
+     *
+     * - `error`/`metadata`: read from $body (this same response's raw decoded body) instead of the
+     *   typed `PaymentError`/`GenericMetadata` models -- compat has always stored these as the raw
+     *   decoded value verbatim, never through a `Jsonable` hydration step (see
+     *   docs/ARCHITECTURE.md's GenericMetadata note).
+     * - `three_ds`: the generated `ChargeThreeDs` response model only carries
+     *   `redirect_endpoint`/`mode` -- no MPI fields (`authentication_value`, `eci`,
+     *   `ds_transaction_id`, `server_transaction_id`, `message_version`, `transaction_status`) and
+     *   no `redirect_id` (see `PaymentThreeDS`'s own class doc for why the generated model can't
+     *   express these -- a genuine spec gap, not an oversight here). Parsed from $body's own
+     *   `three_ds` sub-object via `PaymentThreeDS`'s existing raw parser instead, so nothing the
+     *   raw path reads is ever silently dropped.
+     *
+     * Declines (returns null, letting `TypedHydrator` fall back to the raw path) when $typed isn't
+     * a `UnivaPay\Models\Charge`, or when a field the raw schema marks `required` is missing --
+     * the raw path would throw `Utility\Json\RequiredValueNotFoundException` for that same
+     * response, and this must not silently paper over it with a null.
+     *
+     * @param mixed $typed
+     * @param array $body
+     * @param \Univapay\Compat\Support\CompatContext|null $context
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $body, $context)
+    {
+        if (!($typed instanceof GeneratedCharge)) {
+            return null;
+        }
+        if (
+            $typed->getTransactionTokenType() === null
+            || $typed->getRequestedCurrency() === null
+            || $typed->getRequestedAmount() === null
+            || $typed->getStatus() === null
+            || $typed->getMode() === null
+            || $typed->getCreatedOn() === null
+        ) {
+            return null;
+        }
+
+        $requestedCurrency = new Currency($typed->getRequestedCurrency());
+        $chargedCurrencyValue = $typed->getChargedCurrency();
+        $chargedCurrency = $chargedCurrencyValue !== null ? new Currency($chargedCurrencyValue) : null;
+        $chargedAmount = $chargedCurrency !== null && $typed->getChargedAmount() !== null
+            ? new Money($typed->getChargedAmount(), $chargedCurrency)
+            : null;
+        $redirectTyped = $typed->getRedirect();
+        $redirect = $redirectTyped !== null
+            ? new Redirect($redirectTyped->getEndpoint(), $redirectTyped->getRedirectId())
+            : null;
+
+        return new self(
+            $typed->getId(),
+            $typed->getStoreId(),
+            $typed->getTransactionTokenId(),
+            TokenType::fromValue($typed->getTransactionTokenType()),
+            $typed->getSubscriptionId(),
+            $requestedCurrency,
+            new Money($typed->getRequestedAmount(), $requestedCurrency),
+            $typed->getRequestedAmountFormatted(),
+            ChargeStatus::fromValue($typed->getStatus()),
+            AppTokenMode::fromValue($typed->getMode()),
+            $typed->getCreatedOn(),
+            $chargedCurrency,
+            $chargedAmount,
+            $typed->getChargedAmountFormatted(),
+            $typed->getOnlyDirectCurrency(),
+            $typed->getCaptureAt(),
+            array_key_exists('error', $body) ? $body['error'] : null,
+            array_key_exists('metadata', $body) ? $body['metadata'] : null,
+            $redirect,
+            self::threeDSFromRawBody($body),
+            $context
+        );
+    }
+
+    /**
+     * @param array $body
+     * @return PaymentThreeDS|null
+     */
+    private static function threeDSFromRawBody(array $body)
+    {
+        if (!array_key_exists('three_ds', $body) || $body['three_ds'] === null) {
+            return null;
+        }
+        return PaymentThreeDS::getSchema()->parse($body['three_ds']);
+    }
+
     protected function pollableStatuses()
     {
         return [
@@ -175,7 +271,7 @@ class Charge extends Resource
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function () use ($charges) {
                 return $charges->getCharge($this->storeId, $this->id);
             },
@@ -189,7 +285,7 @@ class Charge extends Resource
         $request = RequestModelFactory::chargeUpdate($updates);
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        return $bridge->caller()->call(
+        return $bridge->caller()->callTyped(
             function ($idempotencyKey) use ($charges, $request) {
                 return $charges->updateCharge($this->storeId, $this->id, $idempotencyKey, $request);
             },
@@ -205,14 +301,14 @@ class Charge extends Resource
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($charges) {
                 return $charges->getCharge($this->storeId, $this->id, true);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/charges/{$this->id}?polling=true"
         );
-        return self::getSchema()->parse($body, [$this->context]);
+        return $this->resolveHydration($result);
     }
 
     /**
@@ -319,28 +415,28 @@ class Charge extends Resource
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($charges) {
                 return $charges->getChargeIssuerToken($this->storeId, $this->id);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/charges/{$this->id}/issuer_token"
         );
-        return OnlineToken::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(OnlineToken::class, $result, $this->context);
     }
 
     public function threeDSIssuerToken()
     {
         $bridge = $this->context->bridge();
         $charges = $bridge->charges();
-        $body = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($charges) {
                 return $charges->getChargeThreeDsIssuerToken($this->storeId, $this->id);
             },
             $bridge->handlers(),
             "GET /stores/{$this->storeId}/charges/{$this->id}/three_ds/issuer_token"
         );
-        return ThreeDSIssuerToken::getSchema()->parse($body, [$this->context]);
+        return TypedHydrator::resolve(ThreeDSIssuerToken::class, $result, $this->context);
     }
 
     // --- GetRefunds/GetCancels mixin hooks --------------------------------------------------------
@@ -353,8 +449,8 @@ class Charge extends Resource
             $this->storeId,
             $this->id,
             $query,
-            function ($raw) {
-                return Refund::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Refund::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }
@@ -367,8 +463,8 @@ class Charge extends Resource
             $this->storeId,
             $this->id,
             $query,
-            function ($raw) {
-                return Cancel::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Cancel::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }

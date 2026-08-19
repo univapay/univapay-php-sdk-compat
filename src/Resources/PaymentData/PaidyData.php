@@ -3,6 +3,7 @@
 namespace Univapay\Compat\Resources\PaymentData;
 
 use JsonSerializable;
+use UnivaPay\Models\TokenResponsePaidyData;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\FunctionalUtils;
 use Univapay\Compat\Utility\Json\JsonSchema;
@@ -63,5 +64,44 @@ class PaidyData implements JsonSerializable
                 ? (is_object($this->phoneNumber) ? $this->phoneNumber->jsonSerialize() : $this->phoneNumber)
                 : null
         ]);
+    }
+
+    /**
+     * Called directly by `Resources\TransactionToken::hydrateFromTyped()` -- see `CardData::
+     * hydrateFromTyped()`'s doc for the general shape. Declines when `shipping_address`
+     * (required=true) is absent from the typed model.
+     *
+     * `country` is patched from `$dataBody` -- a genuine spec gap: the generated
+     * `TokenResponsePaidyDataShippingAddress` has `zip`/`line1`/`line2`/`city`/`state` but no
+     * `country` getter at all, unlike this class's own `Address`, which reads it (untyped,
+     * identity-formatted) same as every other field.
+     *
+     * @param mixed $typed
+     * @param array $dataBody
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $dataBody)
+    {
+        if (!($typed instanceof TokenResponsePaidyData)) {
+            return null;
+        }
+        $shippingTyped = $typed->getShippingAddress();
+        if ($shippingTyped === null) {
+            return null;
+        }
+
+        $raw = isset($dataBody['shipping_address']) && is_array($dataBody['shipping_address'])
+            ? $dataBody['shipping_address']
+            : [];
+        $shippingAddress = new Address(
+            $shippingTyped->getLine1(),
+            $shippingTyped->getLine2(),
+            $shippingTyped->getState(),
+            $shippingTyped->getCity(),
+            array_key_exists('country', $raw) ? $raw['country'] : null,
+            $shippingTyped->getZip()
+        );
+
+        return new self($typed->getPaidyToken(), $shippingAddress, $typed->getPhoneNumber());
     }
 }

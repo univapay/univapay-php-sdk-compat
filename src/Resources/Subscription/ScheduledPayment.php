@@ -12,6 +12,8 @@ use Univapay\Compat\Resources\Mixins\GetCharges;
 use Univapay\Compat\Resources\Resource;
 use Univapay\Compat\Support\ListDispatcher;
 use Univapay\Compat\Support\RequestModelFactory;
+use Univapay\Compat\Support\TypedHydrator;
+use Univapay\Compat\Support\TypedResult;
 use Univapay\Compat\Utility\Json\JsonSchema;
 
 /**
@@ -153,8 +155,8 @@ class ScheduledPayment extends Resource
             $this->subscriptionId,
             $this->id,
             $query,
-            function ($raw) {
-                return Charge::getSchema()->parse($raw, [$this->context]);
+            function ($raw, $typed = null) {
+                return TypedHydrator::resolve(Charge::class, new TypedResult($raw, $typed, false), $this->context);
             }
         );
     }

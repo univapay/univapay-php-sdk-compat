@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Univapay\Compat\Resources\Configuration;
 
+use Money\Currency;
+use UnivaPay\Models\CheckoutSupportedBrand;
 use Univapay\Compat\Enums\CardBrand;
 use Univapay\Compat\Enums\OnlineBrand;
 use Univapay\Compat\Resources\Jsonable;
@@ -57,5 +59,33 @@ class SupportedBrand
             ->upsert('countries_allowed', false, FormatterUtils::getListOf())
             ->upsert('card_brand', false, FormatterUtils::getTypedEnum(CardBrand::class))
             ->upsert('online_brand', false, FormatterUtils::getTypedEnum(OnlineBrand::class));
+    }
+
+    /**
+     * Called directly by `Resources\CheckoutInfo::hydrateFromTyped()`. Clean 1:1 match against
+     * the generated `UnivaPay\Models\CheckoutSupportedBrand` -- `supported_currencies` is mapped
+     * through `new Currency()` per entry and `card_brand`/`online_brand` through their TypedEnum
+     * `fromValue()`, mirroring `initSchema()`'s own formatters exactly.
+     *
+     * @param mixed $typed
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed)
+    {
+        if (!($typed instanceof CheckoutSupportedBrand)) {
+            return null;
+        }
+        $supportedCurrencies = $typed->getSupportedCurrencies();
+        return new self(
+            $typed->getSupportAuthCapture(),
+            $typed->getRequiresFullName(),
+            $typed->getRequiresCvv(),
+            $supportedCurrencies !== null ? array_map(function ($code) {
+                return new Currency($code);
+            }, $supportedCurrencies) : null,
+            $typed->getCountriesAllowed(),
+            CardBrand::fromValue($typed->getCardBrand()),
+            OnlineBrand::fromValue($typed->getOnlineBrand())
+        );
     }
 }

@@ -132,16 +132,22 @@ final class ListDispatcher
     public static function listAllCharges(Bridge $bridge, array $query, callable $itemParser): Paginated
     {
         $args = self::buildArgs($query, self::CHARGE_LIST_ORDER, 'listAllCharges');
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $args) {
                 return $bridge->charges()->listAllCharges(...$args);
             },
             $bridge->handlers(),
             'GET /charges'
         );
-        return self::wrapPage($decoded, $query, $itemParser, function (array $newQuery) use ($bridge, $itemParser) {
-            return self::listAllCharges($bridge, $newQuery, $itemParser);
-        });
+        return self::wrapPage(
+            $result->rawBody,
+            $query,
+            $itemParser,
+            function (array $newQuery) use ($bridge, $itemParser) {
+                return self::listAllCharges($bridge, $newQuery, $itemParser);
+            },
+            self::typedListItems($result->typed)
+        );
     }
 
     /**
@@ -158,7 +164,7 @@ final class ListDispatcher
         callable $itemParser
     ): Paginated {
         $args = self::buildArgs($query, self::CHARGE_LIST_ORDER, 'listStoreCharges');
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $storeId, $args) {
                 return $bridge->charges()->listStoreCharges($storeId, ...$args);
             },
@@ -166,12 +172,13 @@ final class ListDispatcher
             "GET /stores/$storeId/charges"
         );
         return self::wrapPage(
-            $decoded,
+            $result->rawBody,
             $query,
             $itemParser,
             function (array $newQuery) use ($bridge, $storeId, $itemParser) {
                 return self::listStoreCharges($bridge, $storeId, $newQuery, $itemParser);
-            }
+            },
+            self::typedListItems($result->typed)
         );
     }
 
@@ -277,7 +284,7 @@ final class ListDispatcher
     ): Paginated {
         $args = self::buildArgs($query, self::CURSOR_ONLY_ORDER, 'listSubscriptionCharges');
         $merchantId = self::resolveMerchantId($bridge);
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $merchantId, $storeId, $subscriptionId, $args) {
                 return $bridge->subscriptions()->listSubscriptionCharges(
                     $merchantId,
@@ -290,12 +297,13 @@ final class ListDispatcher
             "GET /merchants/$merchantId/stores/$storeId/subscriptions/$subscriptionId/charges"
         );
         return self::wrapPage(
-            $decoded,
+            $result->rawBody,
             $query,
             $itemParser,
             function (array $newQuery) use ($bridge, $storeId, $subscriptionId, $itemParser) {
                 return self::listSubscriptionCharges($bridge, $storeId, $subscriptionId, $newQuery, $itemParser);
-            }
+            },
+            self::typedListItems($result->typed)
         );
     }
 
@@ -366,7 +374,7 @@ final class ListDispatcher
         callable $itemParser
     ): Paginated {
         $args = self::buildArgs($query, self::CURSOR_ONLY_ORDER, 'listChargesForSubscriptionPayment');
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $storeId, $subscriptionId, $paymentId, $args) {
                 return $bridge->subscriptions()->listChargesForSubscriptionPayment(
                     $storeId,
@@ -379,7 +387,7 @@ final class ListDispatcher
             "GET /stores/$storeId/subscriptions/$subscriptionId/payments/$paymentId/charges"
         );
         return self::wrapPage(
-            $decoded,
+            $result->rawBody,
             $query,
             $itemParser,
             function (array $newQuery) use ($bridge, $storeId, $subscriptionId, $paymentId, $itemParser) {
@@ -391,7 +399,8 @@ final class ListDispatcher
                     $newQuery,
                     $itemParser
                 );
-            }
+            },
+            self::typedListItems($result->typed)
         );
     }
 
@@ -467,7 +476,7 @@ final class ListDispatcher
         callable $itemParser
     ): Paginated {
         $args = self::buildArgs($query, self::REFUND_LIST_ORDER, 'listRefunds');
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $storeId, $chargeId, $args) {
                 return $bridge->refunds()->listRefunds($storeId, $chargeId, ...$args);
             },
@@ -475,12 +484,13 @@ final class ListDispatcher
             "GET /stores/$storeId/charges/$chargeId/refunds"
         );
         return self::wrapPage(
-            $decoded,
+            $result->rawBody,
             $query,
             $itemParser,
             function (array $newQuery) use ($bridge, $storeId, $chargeId, $itemParser) {
                 return self::listRefunds($bridge, $storeId, $chargeId, $newQuery, $itemParser);
-            }
+            },
+            self::typedListItems($result->typed)
         );
     }
 
@@ -500,7 +510,7 @@ final class ListDispatcher
         callable $itemParser
     ): Paginated {
         $args = self::buildArgs($query, self::CURSOR_ONLY_ORDER, 'listCancels');
-        $decoded = $bridge->caller()->call(
+        $result = $bridge->caller()->callTyped(
             function () use ($bridge, $storeId, $chargeId, $args) {
                 return $bridge->cancels()->listCancels($storeId, $chargeId, ...$args);
             },
@@ -508,12 +518,13 @@ final class ListDispatcher
             "GET /stores/$storeId/charges/$chargeId/cancels"
         );
         return self::wrapPage(
-            $decoded,
+            $result->rawBody,
             $query,
             $itemParser,
             function (array $newQuery) use ($bridge, $storeId, $chargeId, $itemParser) {
                 return self::listCancels($bridge, $storeId, $chargeId, $newQuery, $itemParser);
-            }
+            },
+            self::typedListItems($result->typed)
         );
     }
 
@@ -730,17 +741,47 @@ final class ListDispatcher
      * @param array $query The query THIS page was fetched with -- stored on the resulting
      *        `Paginated` unchanged (see `Paginated`'s class doc on replaying against the
      *        original query).
-     * @param callable $itemParser `function($rawItem): mixed`, applied to each raw item.
+     * @param callable $itemParser `function($rawItem, $typedItem = null): mixed`, applied to each
+     *        raw item (with the item at the same position in $typedItems, when given -- existing
+     *        single-parameter item parsers are unaffected, PHP simply ignores the extra argument).
      * @param callable $refetch `function(array $newQuery): Paginated`, passed straight through as
      *        the `Paginated`'s fetcher.
-     * @return Paginated
+     * @param array|null $typedItems The generated list wrapper's own `getItems()` result (typed
+     *        models, positionally aligned with $decoded['items']), when a typed-first-hydrated
+     *        endpoint's list call produced one. Null when unavailable (mapper failed, or this
+     *        endpoint isn't typed-first yet) -- every item then hydrates via $itemParser($raw)
+     *        alone, exactly as before typed-first list hydration existed.
      */
-    private static function wrapPage(array $decoded, array $query, callable $itemParser, callable $refetch): Paginated
-    {
-        $rawItems = $decoded['items'] ?? [];
-        $items = array_map($itemParser, $rawItems);
+    private static function wrapPage(
+        array $decoded,
+        array $query,
+        callable $itemParser,
+        callable $refetch,
+        ?array $typedItems = null
+    ): Paginated {
+        $rawItems = array_values($decoded['items'] ?? []);
+        $typedItems = $typedItems !== null ? array_values($typedItems) : [];
+        $items = [];
+        foreach ($rawItems as $index => $raw) {
+            $items[] = $itemParser($raw, isset($typedItems[$index]) ? $typedItems[$index] : null);
+        }
         $hasMore = (bool) ($decoded['has_more'] ?? false);
         return new Paginated($items, $hasMore, $query, $refetch);
+    }
+
+    /**
+     * @param mixed $typedList The generated `*List` wrapper (e.g. `UnivaPay\Models\ChargeList`),
+     *        or null (mapper failed, or this call site hasn't gone through `callTyped()`).
+     * @return array|null $typedList->getItems(), or null if $typedList itself is null/has no such
+     *         method (duck-typed: every `*List` wrapper this touches exposes `getItems()`, but
+     *         there is no shared interface to type-hint against).
+     */
+    private static function typedListItems($typedList): ?array
+    {
+        if ($typedList === null || !method_exists($typedList, 'getItems')) {
+            return null;
+        }
+        return $typedList->getItems();
     }
 
     /**

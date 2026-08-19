@@ -4,6 +4,7 @@ namespace Univapay\Compat\Resources\PaymentData;
 
 use DateInterval;
 use JsonSerializable;
+use UnivaPay\Models\TokenResponseKonbiniData;
 use Univapay\Compat\Enums\ConvenienceStore;
 use Univapay\Compat\Resources\Jsonable;
 use Univapay\Compat\Utility\FormatterUtils;
@@ -54,5 +55,32 @@ class ConvenienceStoreData implements JsonSerializable
                 : null,
             'phone_number' => $this->phoneNumber->jsonSerialize()
         ]);
+    }
+
+    /**
+     * Called directly by `Resources\TransactionToken::hydrateFromTyped()` -- see `CardData::
+     * hydrateFromTyped()`'s doc for the general shape. Declines when `convenience_store`/
+     * `expiration_period`/`phone_number` (all required=true in this class's own schema) are
+     * absent from the typed model.
+     *
+     * @param mixed $typed
+     * @param array $dataBody Unused -- every field this class reads has a typed counterpart.
+     * @return self|null
+     */
+    public static function hydrateFromTyped($typed, array $dataBody)
+    {
+        if (!($typed instanceof TokenResponseKonbiniData)) {
+            return null;
+        }
+        $phoneTyped = $typed->getPhoneNumber();
+        if ($typed->getConvenienceStore() === null || $typed->getExpirationPeriod() === null || $phoneTyped === null) {
+            return null;
+        }
+        return new self(
+            $typed->getCustomerName(),
+            new PhoneNumber($phoneTyped->getCountryCode(), $phoneTyped->getLocalNumber()),
+            ConvenienceStore::fromValue($typed->getConvenienceStore()),
+            new DateInterval($typed->getExpirationPeriod())
+        );
     }
 }

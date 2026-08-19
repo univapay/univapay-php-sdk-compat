@@ -63,12 +63,28 @@ use PHPUnit\Framework\TestCase;
  *   routing through a typed envelope if a typed-first hydration path is added later.
  * - `Resources/Store.php` -- `getCustomerId()` returns `$body['customer_id']` directly, with no
  *   `Jsonable` hydration step at all for this one response.
- * - `Resources/TransactionToken.php` -- the ONE resource file whose raw-array touch
- *   (`$json['payment_type']` in `initSchema()`'s `data` upsert closure) is inside `initSchema()`
- *   itself, same as every other resource's formatter closures -- listed explicitly (rather than
- *   relying on a generic "inside initSchema()" carve-out) because this audit's grep is a flat
- *   per-file check, not a method-body-aware parser; verified by direct reading that no OTHER
- *   method in this file touches raw JSON.
+ * - `Resources/TransactionToken.php` -- `initSchema()`'s `data` upsert closure reads
+ *   `$json['payment_type']` to pick the payment-type union branch (same as every other resource's
+ *   formatter closures, just inside `initSchema()` itself); `hydrateFromTyped()` also reads
+ *   `$body['metadata']`/`$body['data']` (typed-first hydration -- see below).
+ * - `Resources/Charge.php`, `Resources/Refund.php`, `Resources/Cancel.php`,
+ *   `Resources/PaymentToken/ThreeDSIssuerToken.php`, `Resources/PaymentData/CardData.php`,
+ *   `Resources/PaymentData/PaidyData.php`, `Resources/Configuration/Configuration.php`,
+ *   `Resources/Configuration/CardChargeCvvConfirmation.php`,
+ *   `Resources/Configuration/CardConfiguration.php`,
+ *   `Resources/Configuration/InstallmentsConfiguration.php`,
+ *   `Resources/Configuration/QrScanConfiguration.php`,
+ *   `Resources/Configuration/RecurringConfiguration.php`, `Resources/CheckoutInfo.php`,
+ *   `Resources/Subscription.php` -- typed-first hydration (see `Support\TypedHydrator`,
+ *   docs/ARCHITECTURE.md's "Response path" section): each class's
+ *   `hydrateFromTyped()` patches one or more fields the generated SDK's typed model can't carry
+ *   (or genuinely lacks -- `Charge.three_ds`, `PaidyData`'s shipping `country`) from this same
+ *   response's raw decoded body. Most of these patches are by design (`error`/`metadata`/
+ *   `payload`/`flat_fees`/`min_transfer_payout`/`maximum_charge_amounts`/`threshold`/
+ *   `min_charge_amount` were always stored raw verbatim, never Money-converted, even before
+ *   typed-first hydration existed); `QrScanConfiguration`'s `forbidden_qr_scan_gateway` is a
+ *   pre-existing wire-key bug (singular vs the spec's plural `_gateways`) preserved on purpose --
+ *   see that class's own doc.
  *
  * Every other resource class's raw-JSON handling happens through `Utility\Json\JsonSchema`'s
  * reflection-driven `parse()` (property-by-property, via each class's declared `$schema`), which
@@ -97,6 +113,21 @@ class RawJsonConfinementTest extends TestCase
         'Support/ListDispatcher.php',
         'Resources/Store.php',
         'Resources/TransactionToken.php',
+        'Resources/Charge.php',
+        'Resources/Refund.php',
+        'Resources/Cancel.php',
+        'Resources/PaymentToken/ThreeDSIssuerToken.php',
+        'Resources/PaymentData/CardData.php',
+        'Resources/PaymentData/PaidyData.php',
+        'Resources/Configuration/Configuration.php',
+        'Resources/Configuration/CardChargeCvvConfirmation.php',
+        'Resources/Configuration/CardConfiguration.php',
+        'Resources/Configuration/InstallmentsConfiguration.php',
+        'Resources/Configuration/QrScanConfiguration.php',
+        'Resources/Configuration/RecurringConfiguration.php',
+        'Resources/Merchant.php',
+        'Resources/CheckoutInfo.php',
+        'Resources/Subscription.php',
         'Errors/UnivapayRequestError.php',
         'Errors/UnivapayForbiddenError.php',
         'Errors/UnivapayUnauthorizedError.php',
