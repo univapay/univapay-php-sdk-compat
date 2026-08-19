@@ -111,7 +111,7 @@ the dispatch mechanism is needed. As of this writing:
 | `Resources/Store.php` | **Typed-primary** | Clean 1:1 match against `UnivaPay\Models\Store`; `configuration` (optional, unlike `Merchant`'s required one) dispatched to `Configuration::hydrateFromTyped()`. |
 | `Resources/Configuration/*` (13 of 18 classes) | **Typed-primary** | Field-by-field audit against the generated `MerchantWebhookConfiguration` family (see below) found every field has a typed counterpart except a handful always stored raw by design, plus one real bug (see below) — flipped: `Configuration`, `TransferSchedule`, `UserTransactionsConfiguration`, `CardConfiguration`, `QrScanConfiguration`, `ConvenienceConfiguration`, `PaidyConfiguration`, `RecurringConfiguration`, `CardChargeCvvConfirmation`, `SecurityConfiguration`, `LimitChargeByCardConfiguration`, `InstallmentsConfiguration`, `CardBrandPercentFees`. |
 | `Resources/CheckoutInfo.php` and its own-only `Configuration/*` classes (`OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`, `ThemeConfiguration`, `ColorsConfiguration`) | **Typed-primary** | `GET /checkout_info` has its OWN separate generated model family (`Checkout*`, e.g. `CheckoutCardConfiguration`) -- audited field by field (see "Configuration tree audit findings" below) and found clean except `CardConfiguration`'s `card_limit` (already raw-patched for the Merchant/Store family -- the Checkout family's `CheckoutCardConfiguration::getCardLimit()` returns an entirely different TYPE, a nested `CardLimit` object rather than a plain int, so raw-patching it also sidesteps that divergence) and the same `QrScanConfiguration` wire-key bug. The 4 shared classes (`CardConfiguration`/`QrScanConfiguration`/`ConvenienceConfiguration`/`PaidyConfiguration`) now recognize EITHER generated family via a second `instanceof` branch. |
-| `Resources/Subscription.php` | Raw-primary | **Confirmed spec gap** (a spec fix is in flight separately): the generated `UnivaPay\Models\Subscription` has no `cyclical_period`, `cycles_left`/`payments_left`, `charge_id`, `subscription_plan`, `installment_plan`, `amount_left`/`amount_left_formatted`, or `three_ds` — fields the raw parser reads and this compat resource exposes. Do not patch-from-raw here: patching this many fields would leave almost nothing typed, so this stays raw-primary until the spec catches up. |
+| `Resources/Subscription.php` | **Typed-primary** | `univapay/client-sdk` 1.2.0 closed the spec gap that kept this raw-primary: the generated `UnivaPay\Models\Subscription` now carries `three_ds`, `cyclical_period`, `subscription_plan`, `installment_plan`, `amount_left`/`amount_left_formatted` — every field the raw parser reads now has a typed counterpart, except `metadata` (raw by design) and `payments_left` (a pre-existing, unrelated field-name mismatch against the generated model's `cycles_left` — see "Subscription: the 1.2.0 flip" below) and `next_payment` (`ScheduledPayment`'s own constructor does its own raw-string parsing, incompatible with feeding it already-typed values — patched from raw, not a spec gap). |
 | List endpoints (`Support\ListDispatcher`) | Mixed — see below | Charge/Refund/Cancel lists are typed-first; every other list endpoint is raw-primary. |
 | `Resources/Transfer.php`, `Resources/BankAccount.php`, `Resources/Ledger.php`, `Resources/TransferStatusChange.php` | Raw-primary, permanently | These resources have no live API endpoint at all (`fetchCall()`/`updateCall()` throw `UnivapayUnsupportedFeatureError` unconditionally) — the ONLY place they're ever hydrated is `UnivapayClient::parseWebhookData()`, parsing a consumer-supplied array that never passed through `ApiCaller`/a generated `Apis\*` call in the first place. There is no typed result to prefer in that path, structurally, not as a matter of prioritization. |
 
@@ -162,6 +162,39 @@ counterpart. All 18 `Configuration\*` classes are now typed-primary. Findings:
   `PaidyConfiguration`. 5 classes are `CheckoutInfo`-only and recognize only the `Checkout*`
   family: `OnlineConfiguration`, `SubscriptionConfiguration`, `SupportedBrand`,
   `ThemeConfiguration`, `ColorsConfiguration`.
+
+## Subscription: the 1.2.0 flip
+
+`univapay/client-sdk` 1.2.0 added every response field this resource's raw schema reads that the
+generated model previously lacked (`three_ds`, `cyclical_period`, `subscription_plan`,
+`installment_plan`, `amount_left`/`amount_left_formatted`, plus `cycles_left`/`charge_id`, which
+compat has no property for at all and simply ignores like any other extra getter). Comparing every
+`initSchema()` key against the new typed getters found:
+
+- **`installment_plan`'s amount key is plural on the generated model**
+  (`SubscriptionInstallmentPlanResponse::getFixedCyclesAmount()`, plural "Cycles") but compat's own
+  `Subscription\InstallmentPlan` class has never had a property for it at all — only `planType`/
+  `fixedCycles` — so this is simply unused on both paths, not a gap introduced by the rename.
+- **`payments_left` is a pre-existing, unrelated field-name mismatch**: this class's own
+  auto-derived raw schema has always read `payments_left`, but the generated model's equivalent
+  field is `cycles_left` — a different key entirely, not a casing difference. Patched from the raw
+  body so it behaves exactly as it always has either way (flows through when the wire carries
+  `payments_left`, stays null when it doesn't) — see
+  `SubscriptionDifferentialTest::testPaymentsLeftPresentFlowsThroughOnBothPaths()`/
+  `testPaymentsLeftIsNullWhenOnlyCyclesLeftIsPresent()`.
+- **`next_payment` is patched from raw for a structural reason, not a missing-field one**: every
+  field `Subscription\ScheduledPayment` reads has a typed counterpart on the generated
+  `SubscriptionNextPayment`, but `ScheduledPayment`'s own constructor performs its OWN raw-string
+  parsing (`new DateTimeZone($zoneId)`, `date_create($dueDate)->setTimezone(...)`, `new
+  Currency($currency)`, `new Money($amount, $currency)`, `$createdOn ?? 'now'`) instead of going
+  through `FormatterUtils` like every other nested type here. Feeding it the typed getters'
+  already-parsed `\DateTime`/int values would require reformatting them back to strings first for
+  no real benefit; `ScheduledPayment` itself is not flipped as a resource by this change.
+- **`three_ds`'s typed source, `SubscriptionThreeDs`, has no MPI fields** (`mode`/
+  `redirect_endpoint`/`redirect_id` only) — same category of gap as `Charge`'s `ChargeThreeDs`, but
+  narrower: `redirect_id` IS present here (unlike `Charge`'s case), so only `threeDSMPI` is
+  missing, and it's hardcoded null rather than patched from raw, since MPI data is request-only and
+  never appears in a response (see `PaymentThreeDS`'s own class doc).
 
 ## List endpoints
 
@@ -228,6 +261,7 @@ Raw array access on a decoded HTTP body (`$body[`, `$json[`, `$raw[`, `$decoded[
 | `Resources/Configuration/QrScanConfiguration.php` | Typed-first hydration: `hydrateFromTyped()` patches `forbidden_qr_scan_gateway` from the raw body — preserving a pre-existing wire-key bug, see "Configuration tree audit findings" |
 | `Resources/Configuration/RecurringConfiguration.php` | Typed-first hydration: sub-body extraction for its nested `CardChargeCvvConfirmation` |
 | `Resources/CheckoutInfo.php` | Typed-first hydration: `hydrateFromTyped()`'s sub-body extraction for its nested `CardConfiguration`/`QrScanConfiguration` |
+| `Resources/Subscription.php` | Typed-first hydration: `hydrateFromTyped()` patches `metadata`/`payments_left` from the raw body by design/pre-existing mismatch, and `next_payment` entirely (see "Subscription: the 1.2.0 flip") |
 
 `UnivapayClient::parseWebhookData(array $data)` reads `$data['event']`/`$data['data']` — but on a
 consumer-supplied array (that method's documented contract), never a decoded API response. It
